@@ -21,7 +21,13 @@ int target_parse(const char *str, struct targetspec *dst)
 
 	char addr[40], *mask;
 	mask = strchr(str, '/');
-	if(!mask || mask - str > sizeof(addr) - 1)
+	if(!mask) { // assume /128 if no mask given
+		if(parse_ipv6(str, dst->addr) < 0)
+			return -1;
+		memset(dst->mask, 0xff, 16);
+		return 0;
+	}
+	if(mask - str > sizeof(addr) - 1)
 		return -1;
 	strncpy_term(addr, str, mask - str);
 	mask++;
@@ -42,7 +48,7 @@ int target_parse(const char *str, struct targetspec *dst)
 		end = strtol_simple(second, 10);
 		if(begin > 128 || begin < 0 || end > 128 || end < 0)
 			return -1;
-		if(begin > end)
+		if(begin >= end)
 			return -1;
 
 		memset(dst->mask, 0xff, 16);

@@ -22,13 +22,13 @@ void usage(void)
 	printf("  A target specification is basically just a fancy netmask.\n");
 	printf("  Target specs come in three shapes:\n");
 	printf("    2001:db8::/64 (classic subnet notation)\n");
-	printf("      It should be obvious how this one works...\n");
+	printf("      This one should be obvious, you can even omit the number (it defaults to 128).\n");
 	printf("    2001:db8::1/32-48 (subnet range notation)\n");
 	printf("      The resulting netmask will be ffff:ffff:0000:ffff:ffff:ffff:ffff:ffff\n");
 	printf("      This will return all hosts 2001:db8:*::1 with * in range 0000 to ffff\n");
 	printf("    2001:db8::x (wildcard nibble notation)\n");
 	printf("      The resulting netmask will be all f's except the last nibble\n");
-	printf("      This will return all hosts 2001:db::* with * in range 0 to f\n");
+	printf("      This will return all hosts 2001:db8::a, 2001:db8::b ... 2001:db8::f\n");
 	printf("  It is only possible to specify one target specification on the command line,\n");
 	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
 }

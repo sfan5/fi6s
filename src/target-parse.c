@@ -72,6 +72,9 @@ int target_parse(const char *str, struct targetspec *dst)
 		}
 	}
 
+	for(int i = 0; i < 16; i++)
+		dst->addr[i] &= dst->mask[i];
+
 	return 0;
 }
 

@@ -1,7 +1,19 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "util.h"
+
+void ipv6_string(char *dst, const uint8_t *addr)
+{
+	// TODO: make use of zero compression
+	int pos = 0;
+	for(int i = 0; i < 8; i++) {
+		pos += snprintf(&dst[pos], 5, "%x", addr[i*2] << 8 | addr[i*2 + 1]);
+		if(i != 7)
+			pos += snprintf(&dst[pos], 2, ":");
+	}
+}
 
 int strtol_suffix(const char *str)
 {

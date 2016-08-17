@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h> // getpid()
+#include <time.h> // time()
 #include <getopt.h>
 
 #include "util.h"
@@ -47,22 +49,20 @@ int main(int argc, char *argv[])
 		{"output-file", required_argument, 0, 'o'},
 		{0,0,0,0},
 	};
-	int echo_hosts = 0;
+	int echo_hosts = 0, randomize_hosts = 1;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
 		if(c == -1)
 			break;
 		switch(c) {
-			case 'Z': {
-				int val = atoi(optarg);
-				if(val != 0 && val != 1) {
+			case 'Z':
+				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {
 					printf("Argument to --randomize-hosts must be 0 or 1\n");
 					return 1;
 				}
-				// TODO
+				randomize_hosts = (*optarg == '1');
 				break;
-			}
 			case 'Y':
 				echo_hosts = 1;
 				break;
@@ -102,25 +102,43 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	srand(time(NULL) ^ getpid());
+	target_gen_init();
+	target_gen_set_randomized(randomize_hosts);
+
+	int r;
 	if(echo_hosts) {
-		struct targetspec t;
-		if(target_parse(argv[optind], &t) < 0) {
-			printf("Failed to parse target spec.\n");
-			return 1;
+		const char *tspec = argv[optind];
+		if(*tspec == '@') { // load from file
+			printf("~unimplemented~\n");
+			return 123;
+		} else {
+			struct targetspec t;
+			if(target_parse(tspec, &t) < 0) {
+				printf("Failed to parse target spec.\n");
+				return 1;
+			}
+			target_gen_add(&t);
 		}
-		printf("addr= ");
-		for(int i = 0; i < 16; i+=2)
-			printf("%02x%02x%c", t.addr[i], t.addr[i+1], (i == 14)?'\n':':');
-		printf("mask= ");
-		for(int i = 0; i < 16; i+=2)
-			printf("%02x%02x%c", t.mask[i], t.mask[i+1], (i == 14)?'\n':':');
-		return 0;
+
+		uint8_t addr[16];
+		char buf[IPV6_STRING_MAX];
+		while(target_gen_next(addr) == 0) {
+			ipv6_string(buf, addr);
+			puts(buf);
+		}
+
+		r = 0;
+	} else {
+		r = mainloop();
 	}
-	return mainloop();
+
+	target_gen_fini();
+	return r;
 }
 
 int mainloop(void)
 {
-	// Do actual stuff here...
+	printf("~unimplemented~\n");
 	return 123;
 }

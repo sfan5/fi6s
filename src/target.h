@@ -10,4 +10,13 @@ struct targetspec {
 
 int target_parse(const char *str, struct targetspec *dst);
 
+#define MAX_TARGETS 24
+#define RANDOMIZE_SIZE 8192
+
+void target_gen_init(void);
+void target_gen_set_randomized(int v);
+void target_gen_fini(void);
+int target_gen_add(const struct targetspec *s);
+int target_gen_next(uint8_t *dst);
+
 #endif // _TARGET_H

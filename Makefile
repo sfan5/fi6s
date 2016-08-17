@@ -6,7 +6,9 @@ LIBS =
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
-SRC = main.c util.c target-parse.c
+SRC = \
+	main.c util.c \
+	target-parse.c target-gen.c
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
 
 all: fi6s

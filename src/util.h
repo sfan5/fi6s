@@ -10,6 +10,5 @@ int strchr_count(const char *str, int c); // counts occurrences of c
 		strncpy(dst, src, n); \
 		dst[n] = '\0'; \
 	} while(0)
-		
 
 #endif // _UTIL_H

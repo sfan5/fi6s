@@ -1,11 +1,12 @@
-CFLAGS = -pipe -std=c11 -Wall -Wextra -O0 -g
-LDFLAGS = -g
+CFLAGS = -pipe -std=c11 -Wall -Wextra -Wno-sign-compare
+CFLAGS += -O1 -g
+LDFLAGS =
 LIBS =
 
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
-SRC = main.c
+SRC = main.c util.c target-parse.c
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
 
 all: fi6s

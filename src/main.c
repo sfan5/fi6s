@@ -3,7 +3,8 @@
 #include <string.h>
 #include <getopt.h>
 
-#include "main.h"
+#include "util.h"
+#include "target.h"
 
 void usage(void)
 {
@@ -33,7 +34,6 @@ void usage(void)
 }
 
 int mainloop(void);
-int strtol_suffix(const char *str);
 
 int main(int argc, char *argv[])
 {
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
 		{"echo-hosts", no_argument, 0, 'Y'},
 		{"max-rate", required_argument, 0, 'X'},
 		{"output-format", required_argument, 0, 'W'},
-		
+
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
 		{0,0,0,0},
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 				if(strcmp(optarg, "list") != 0 &&
 					strcmp(optarg, "json") != 0 &&
 					strcmp(optarg, "binary") != 0) {
-					printf("Argument to --output-format must be one of list, json or binary\n");	
+					printf("Argument to --output-format must be one of list, json or binary\n");
 				}
 				// TODO
 				break;
@@ -103,25 +103,20 @@ int main(int argc, char *argv[])
 	}
 
 	if(echo_hosts) {
-	
+		struct targetspec t;
+		if(target_parse(argv[optind], &t) < 0) {
+			printf("Failed to parse target spec.\n");
+			return 1;
+		}
+		printf("addr= ");
+		for(int i = 0; i < 16; i+=2)
+			printf("%02x%02x%c", t.addr[i], t.addr[i+1], (i == 14)?'\n':':');
+		printf("mask= ");
+		for(int i = 0; i < 16; i+=2)
+			printf("%02x%02x%c", t.mask[i], t.mask[i+1], (i == 14)?'\n':':');
 		return 0;
 	}
 	return mainloop();
-}
-
-int strtol_suffix(const char *str)
-{
-	char *endptr;
-	int value = strtol(str, &endptr, 10);
-	if(endptr == str || strlen(endptr) > 1)
-		return -1;
-	if(*endptr == '\0')
-		value *= 1;
-	else if(*endptr == 'k')
-		value *= 1000;
-	else
-		return -1;
-	return value;
 }
 
 int mainloop(void)

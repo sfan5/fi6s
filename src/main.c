@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h> // getpid()
 #include <time.h> // time()
@@ -19,6 +20,9 @@ void usage(void)
 	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
 	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
 	printf("  --interface <if>        Use <if> for capturing and sending packets\n");
+	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
+	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
+	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
 	printf("  -p <port range(s)>      Only scan specified ports\n");
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
@@ -37,7 +41,7 @@ void usage(void)
 	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
 }
 
-int mainloop(void);
+int mainloop(const char *interface);
 
 int main(int argc, char *argv[])
 {
@@ -47,6 +51,9 @@ int main(int argc, char *argv[])
 		{"max-rate", required_argument, 0, 'X'},
 		{"output-format", required_argument, 0, 'W'},
 		{"interface", required_argument, 0, 'V'},
+		{"source-mac", required_argument, 0, 'U'}, // TODO: find out all three of these automatically
+		{"router-mac", required_argument, 0, 'T'},
+		{"source-ip", required_argument, 0, 'S'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
@@ -55,6 +62,7 @@ int main(int argc, char *argv[])
 
 	int echo_hosts = 0, randomize_hosts = 1;
 	char *interface = NULL;
+	uint8_t source_mac[16], router_mac[16];
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
@@ -85,11 +93,27 @@ int main(int argc, char *argv[])
 					strcmp(optarg, "json") != 0 &&
 					strcmp(optarg, "binary") != 0) {
 					printf("Argument to --output-format must be one of list, json or binary\n");
+					return 1;
 				}
 				// TODO
 				break;
 			case 'V':
 				interface = optarg;
+				break;
+			case 'U':
+				if(parse_mac(optarg, source_mac) < 0) {
+					printf("Argument to --source-mac is not a valid MAC address\n");
+					return 1;
+				}
+				break;
+			case 'T':
+				if(parse_mac(optarg, router_mac) < 0) {
+					printf("Argument to --router-mac is not a valid MAC address\n");
+					return 1;
+				}
+				break;
+			case 'S':
+				// TODO
 				break;
 
 			case 'h':
@@ -138,18 +162,20 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		if(rawsock_open(interface) < 0)
-			return 1;
-		r = mainloop();
-		rawsock_close();
+		r = mainloop(interface);
 	}
 
 	target_gen_fini();
 	return r;
 }
 
-int mainloop(void)
+int mainloop(const char *interface)
 {
-	// TODO
-	return 123;
+	if(rawsock_open(interface) < 0)
+		return 1;
+	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + 10];
+	// TODO: http://www.tcpdump.org/pcap.html
+
+	rawsock_close();
+	return 0;
 }

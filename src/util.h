@@ -6,6 +6,7 @@
 #define IPV6_STRING_MAX 40
 
 void ipv6_string(char *dst, const uint8_t *addr); // writes null-terminated string representing the IPv6 address into buffer
+int parse_mac(const char *str, uint8_t *dst); // parses MAC address string and writes raw address into buffer
 int strtol_suffix(const char *str); // permits k suffix that multiplies by 1000, returns -1 on error
 int strtol_simple(const char *str, int base); // returns -1 on error
 int strchr_count(const char *str, int c); // counts occurrences of c

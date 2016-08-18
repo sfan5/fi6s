@@ -29,6 +29,14 @@ int rawsock_open(const char *dev)
 	return 0;
 }
 
+int rawsock_send(const char *pkt, int size)
+{
+	int r = pcap_sendpacket(handle, (u_char*) pkt, size);
+	if(r == -1)
+		pcap_perror(handle, "");
+	return r;
+}
+
 void rawsock_close(void)
 {
 	pcap_close(handle);

@@ -15,6 +15,26 @@ void ipv6_string(char *dst, const uint8_t *addr)
 	}
 }
 
+int parse_mac(const char *str, uint8_t *dst)
+{
+	const char *p = str;
+	for(int i = 0; i < 6; i++) {
+		char cur[3];
+		int j = 0;
+		while(*p && *p != ':' && *p != '-' && j < 2)
+			cur[j++] = *(p++);
+		cur[2] = '\0';
+		j = strtol_simple(cur, 16);
+		if(j == -1)
+			return -1;
+		dst[i] = j & 0xff;
+		if(!*p && j != 5)
+			return -1;
+		p++;
+	}
+	return 0;
+}
+
 int strtol_suffix(const char *str)
 {
 	char *endptr;

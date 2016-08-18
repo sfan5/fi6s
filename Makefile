@@ -1,13 +1,13 @@
 CFLAGS = -pipe -std=c11 -Wall -Wextra -Wno-sign-compare
 CFLAGS += -O1 -g
 LDFLAGS =
-LIBS =
+LIBS = -lpcap
 
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
 SRC = \
-	main.c util.c \
+	main.c util.c rawsock.c \
 	target-parse.c target-gen.c
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
 

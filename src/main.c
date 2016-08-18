@@ -7,6 +7,7 @@
 
 #include "util.h"
 #include "target.h"
+#include "rawsock.h"
 
 void usage(void)
 {
@@ -16,8 +17,9 @@ void usage(void)
 	printf("  --help                  Show this text\n");
 	printf("  --randomize-hosts <0|1> Randomize order of hosts (defaults to 1)\n");
 	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
-	printf("  -p <port range(s)>      Only scan specified ports\n");
 	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
+	printf("  --interface <if>        Use <if> for capturing and sending packets\n");
+	printf("  -p <port range(s)>      Only scan specified ports\n");
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
 	printf("Target specification:\n");
@@ -44,12 +46,15 @@ int main(int argc, char *argv[])
 		{"echo-hosts", no_argument, 0, 'Y'},
 		{"max-rate", required_argument, 0, 'X'},
 		{"output-format", required_argument, 0, 'W'},
+		{"interface", required_argument, 0, 'V'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
 		{0,0,0,0},
 	};
+
 	int echo_hosts = 0, randomize_hosts = 1;
+	char *interface = NULL;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
@@ -83,6 +88,9 @@ int main(int argc, char *argv[])
 				}
 				// TODO
 				break;
+			case 'V':
+				interface = optarg;
+				break;
 
 			case 'h':
 				usage();
@@ -106,21 +114,21 @@ int main(int argc, char *argv[])
 	target_gen_init();
 	target_gen_set_randomized(randomize_hosts);
 
+	const char *tspec = argv[optind];
+	if(*tspec == '@') { // load from file
+		// TODO
+		return 123;
+	} else {
+		struct targetspec t;
+		if(target_parse(tspec, &t) < 0) {
+			printf("Failed to parse target spec.\n");
+			return 1;
+		}
+		target_gen_add(&t);
+	}
+
 	int r;
 	if(echo_hosts) {
-		const char *tspec = argv[optind];
-		if(*tspec == '@') { // load from file
-			printf("~unimplemented~\n");
-			return 123;
-		} else {
-			struct targetspec t;
-			if(target_parse(tspec, &t) < 0) {
-				printf("Failed to parse target spec.\n");
-				return 1;
-			}
-			target_gen_add(&t);
-		}
-
 		uint8_t addr[16];
 		char buf[IPV6_STRING_MAX];
 		while(target_gen_next(addr) == 0) {
@@ -130,7 +138,10 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
+		if(rawsock_open(interface) < 0)
+			return 1;
 		r = mainloop();
+		rawsock_close();
 	}
 
 	target_gen_fini();
@@ -139,6 +150,6 @@ int main(int argc, char *argv[])
 
 int mainloop(void)
 {
-	printf("~unimplemented~\n");
+	// TODO
 	return 123;
 }

@@ -11,8 +11,8 @@ static uint8_t ip_src[16], ip_ttl;
 
 void rawsock_eth_settings(const uint8_t *src, const uint8_t *dst)
 {
-	memcpy(eth_src, src, 16);
-	memcpy(eth_dst, dst, 16);
+	memcpy(eth_src, src, 6);
+	memcpy(eth_dst, dst, 6);
 }
 
 void rawsock_eth_prepare(struct frame_eth *f, int type)
@@ -32,8 +32,10 @@ void rawsock_ip_settings(const uint8_t *src, int ttl)
 void rawsock_ip_prepare(struct frame_ip *f, int type)
 {
 	f->ver = 6;
-	f->traffic = 0;
-	f->flow = 0;
+	f->traffic1 = 0;
+	f->traffic2 = 0;
+	f->flow1 = 0;
+	f->flow2 = 0;
 	f->next = type & 0xff;
 	f->ttl = ip_ttl;
 	memcpy(f->src, ip_src, 16);

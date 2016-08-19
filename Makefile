@@ -9,7 +9,8 @@ BINDIR ?= $(PREFIX)/bin
 SRC = \
 	main.c util.c \
 	target-parse.c target-gen.c \
-	rawsock-pcap.c rawsock-frame.c
+	rawsock-pcap.c rawsock-frame.c \
+	tcp.c
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
 
 all: fi6s

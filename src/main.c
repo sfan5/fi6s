@@ -9,6 +9,7 @@
 #include "util.h"
 #include "target.h"
 #include "rawsock.h"
+#include "tcp.h"
 
 void usage(void)
 {
@@ -19,10 +20,12 @@ void usage(void)
 	printf("  --randomize-hosts <0|1> Randomize order of hosts (defaults to 1)\n");
 	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
 	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
+	printf("  --source-port <port>    Use specified source port for scanning\n");
 	printf("  --interface <if>        Use <if> for capturing and sending packets\n");
 	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
 	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
 	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
+	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
 	printf("  -p <port range(s)>      Only scan specified ports\n");
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
@@ -41,7 +44,7 @@ void usage(void)
 	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
 }
 
-int mainloop(const char *interface);
+int mainloop(const char *interface, int source_port);
 
 int main(int argc, char *argv[])
 {
@@ -51,18 +54,20 @@ int main(int argc, char *argv[])
 		{"max-rate", required_argument, 0, 'X'},
 		{"output-format", required_argument, 0, 'W'},
 		{"interface", required_argument, 0, 'V'},
-		{"source-mac", required_argument, 0, 'U'}, // TODO: find out all three of these automatically
+		{"source-mac", required_argument, 0, 'U'}, // TODO: find out all {source,router}-mac and source-ip automatically
 		{"router-mac", required_argument, 0, 'T'},
 		{"source-ip", required_argument, 0, 'S'},
+		{"source-port", required_argument, 0, 'R'},
+		{"ttl", required_argument, 0, 'Q'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
 		{0,0,0,0},
 	};
 
-	int echo_hosts = 0, randomize_hosts = 1;
+	int echo_hosts = 0, randomize_hosts = 1, source_port = -1, ttl = 64;
 	char *interface = NULL;
-	uint8_t source_mac[16], router_mac[16];
+	uint8_t source_mac[6], router_mac[6], source_addr[16];
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
@@ -113,8 +118,29 @@ int main(int argc, char *argv[])
 				}
 				break;
 			case 'S':
-				// TODO
+				if(parse_ipv6(optarg, source_addr) < 0) {
+					printf("Argument to --source-addr is not a valid IPv6 address\n");
+					return 1;
+				}
 				break;
+			case 'R': {
+				int val = strtol_simple(optarg, 10);
+				if(val < 1 || val > 65535) {
+					printf("Argument to --source-port must be in range 1-65535\n");
+					return 1;
+				}
+				source_port = val;
+				break;
+			}
+			case 'Q': {
+				int val = strtol_simple(optarg, 10);
+				if(val < 1 || val > 255) {
+					printf("Argument to --ttl must be in range 1-255\n");
+					return 1;
+				}
+				ttl = val;
+				break;
+			}
 
 			case 'h':
 				usage();
@@ -137,6 +163,8 @@ int main(int argc, char *argv[])
 	srand(time(NULL) ^ getpid());
 	target_gen_init();
 	target_gen_set_randomized(randomize_hosts);
+	rawsock_eth_settings(source_mac, router_mac);
+	rawsock_ip_settings(source_addr, ttl);
 
 	const char *tspec = argv[optind];
 	if(*tspec == '@') { // load from file
@@ -162,19 +190,33 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		r = mainloop(interface);
+		r = mainloop(interface, source_port);
 	}
 
 	target_gen_fini();
 	return r;
 }
 
-int mainloop(const char *interface)
+#define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )
+#define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
+#define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
+
+int mainloop(const char *interface, int source_port)
 {
 	if(rawsock_open(interface) < 0)
 		return 1;
-	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + 10];
-	// TODO: http://www.tcpdump.org/pcap.html
+	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
+	uint8_t dstaddr[16];
+
+	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
+	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
+	if(target_gen_next(dstaddr) < 0)
+		return 1;
+	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
+	make_a_syn_pkt_pls(TCP_HEADER(packet), 80, source_port==-1? ((rand() & 0xffff) | 1024) : source_port);
+	checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
+	rawsock_send((char*) packet, sizeof(packet));
+	// http://www.tcpdump.org/pcap.html
 
 	rawsock_close();
 	return 0;

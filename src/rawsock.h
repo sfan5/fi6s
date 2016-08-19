@@ -6,7 +6,7 @@
 #define FRAME_ETH_SIZE 14
 #define FRAME_IP_SIZE 40
 
-#define ETH_TYPE_IPV6 0xdd86
+#define ETH_TYPE_IPV6 0x86dd
 #define IP_TYPE_TCP 0x06
 #define IP_TYPE_UDP 0x11
 
@@ -17,10 +17,13 @@ struct frame_eth {
 } __attribute__((packed));
 
 struct frame_ip {
-	uint32_t
-		ver:4, // Version (== 0x06)
-		traffic:8, // Traffic class
-		flow:20; // Flow label
+	uint8_t
+		traffic1:4, // Traffic class
+		ver:4; // Version (== 0x06)
+	uint8_t
+		flow1:4, // Flow label
+		traffic2:4;
+	uint16_t flow2;
 	uint16_t len; // Payload length
 	uint8_t next; // Type of next header (TCP or UDP)
 	uint8_t ttl; // Hop limit

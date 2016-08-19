@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+#define _GNU_SOURCE // strchrnul()
 #include <string.h>
 #include <endian.h>
 
@@ -12,7 +12,6 @@
 	} while(0)
 
 static int parse_wcnibble(const char *str, struct targetspec *dst);
-static int parse_ipv6(const char *str, uint8_t *dst);
 
 int target_parse(const char *str, struct targetspec *dst)
 {
@@ -74,45 +73,6 @@ int target_parse(const char *str, struct targetspec *dst)
 
 	for(int i = 0; i < 16; i++)
 		dst->addr[i] &= dst->mask[i];
-
-	return 0;
-}
-
-static int parse_ipv6(const char *str, uint8_t *dst)
-{
-	memset(dst, 0, 16);
-	int given = strchr_count(str, ':') + 1;
-	if(given < 3 || given > 8) // '::' is 3 elements
-		return -1;
-
-	const char *p = str;
-	int i = 0;
-	while(1) {
-		char cur[5], *next = strchrnul(p, ':');
-		if(next - p > sizeof(cur) - 1)
-			return -1;
-		strncpy_term(cur, p, next - p);
-
-		if((i == 0 || i == 7) && strlen(cur) == 0)
-			strncpy(cur, "0", 3); // zero compression can't be used on first or last element
-		if(strlen(cur) == 0) {
-			// zero compression: an empty field fills up the missing zeroes
-			i += 8 - given;
-			goto next;
-		}
-
-		int val = strtol_simple(cur, 16);
-		if(val == -1)
-			return -1;
-		uint16_t val_fixed = htobe16(val & 0xffff);
-		memcpy(&dst[i*2], &val_fixed, 2);
-
-		next:
-		if(*next == '\0')
-			break;
-		p = next + 1;
-		i++;
-	}
 
 	return 0;
 }

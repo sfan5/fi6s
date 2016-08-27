@@ -11,40 +11,12 @@
 #include "rawsock.h"
 #include "tcp.h"
 
-void usage(void)
-{
-	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in litte time.\n");
-	printf("Usage: fi6s [options] <target specification>\n");
-	printf("Options:\n");
-	printf("  --help                  Show this text\n");
-	printf("  --randomize-hosts <0|1> Randomize order of hosts (defaults to 1)\n");
-	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
-	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
-	printf("  --source-port <port>    Use specified source port for scanning\n");
-	printf("  --interface <if>        Use <if> for capturing and sending packets\n");
-	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
-	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
-	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
-	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
-	printf("  -p <port range(s)>      Only scan specified ports\n");
-	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
-	printf("  -o <file>               Set output file\n");
-	printf("Target specification:\n");
-	printf("  A target specification is basically just a fancy netmask.\n");
-	printf("  Target specs come in three shapes:\n");
-	printf("    2001:db8::/64 (classic subnet notation)\n");
-	printf("      This one should be obvious, you can even omit the number (it defaults to 128).\n");
-	printf("    2001:db8::1/32-48 (subnet range notation)\n");
-	printf("      The resulting netmask will be ffff:ffff:0000:ffff:ffff:ffff:ffff:ffff\n");
-	printf("      This will return all hosts 2001:db8:*::1 with * in range 0000 to ffff\n");
-	printf("    2001:db8::x (wildcard nibble notation)\n");
-	printf("      The resulting netmask will be all f's except the last nibble\n");
-	printf("      This will return all hosts 2001:db8::a, 2001:db8::b ... 2001:db8::f\n");
-	printf("  It is only possible to specify one target specification on the command line,\n");
-	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
-}
+static void usage(void);
+static int mainloop(void);
 
-int mainloop(const char *interface, int source_port);
+static int a_source_port;
+static char *a_interface;
+static uint8_t a_source_addr[16];
 
 int main(int argc, char *argv[])
 {
@@ -65,9 +37,10 @@ int main(int argc, char *argv[])
 		{0,0,0,0},
 	};
 
-	int echo_hosts = 0, randomize_hosts = 1, source_port = -1, ttl = 64;
-	char *interface = NULL;
-	uint8_t source_mac[6], router_mac[6], source_addr[16];
+	int echo_hosts = 0, randomize_hosts = 1, ttl = 64;
+	uint8_t source_mac[6], router_mac[6];
+	a_source_port = -1;
+	a_interface = NULL;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
@@ -103,7 +76,7 @@ int main(int argc, char *argv[])
 				// TODO
 				break;
 			case 'V':
-				interface = optarg;
+				a_interface = optarg;
 				break;
 			case 'U':
 				if(parse_mac(optarg, source_mac) < 0) {
@@ -118,7 +91,7 @@ int main(int argc, char *argv[])
 				}
 				break;
 			case 'S':
-				if(parse_ipv6(optarg, source_addr) < 0) {
+				if(parse_ipv6(optarg, a_source_addr) < 0) {
 					printf("Argument to --source-addr is not a valid IPv6 address\n");
 					return 1;
 				}
@@ -129,7 +102,7 @@ int main(int argc, char *argv[])
 					printf("Argument to --source-port must be in range 1-65535\n");
 					return 1;
 				}
-				source_port = val;
+				a_source_port = val;
 				break;
 			}
 			case 'Q': {
@@ -164,7 +137,7 @@ int main(int argc, char *argv[])
 	target_gen_init();
 	target_gen_set_randomized(randomize_hosts);
 	rawsock_eth_settings(source_mac, router_mac);
-	rawsock_ip_settings(source_addr, ttl);
+	rawsock_ip_settings(a_source_addr, ttl);
 
 	const char *tspec = argv[optind];
 	if(*tspec == '@') { // load from file
@@ -190,7 +163,7 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		r = mainloop(interface, source_port);
+		r = mainloop();
 	}
 
 	target_gen_fini();
@@ -201,23 +174,80 @@ int main(int argc, char *argv[])
 #define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
 #define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
 
-int mainloop(const char *interface, int source_port)
+int mainloop(void)
 {
-	if(rawsock_open(interface) < 0)
+	if(rawsock_open(a_interface, 2048) < 0)
 		return 1;
 	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
+	const uint8_t *cpacket;
 	uint8_t dstaddr[16];
+	uint64_t ts;
+	int ret, clen;
 
+	// Set filters
+	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
+	if(a_source_port != -1)
+		fflags |= RAWSOCK_FILTER_DSTPORT;
+	if(rawsock_setfilter(fflags, IP_TYPE_TCP, a_source_addr, a_source_port) < 0)
+		goto err;
+
+	// Send TCP packet
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
 	if(target_gen_next(dstaddr) < 0)
 		return 1;
 	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
-	make_a_syn_pkt_pls(TCP_HEADER(packet), 80, source_port==-1? ((rand() & 0xffff) | 1024) : source_port);
+	make_a_syn_pkt_pls(TCP_HEADER(packet), 80, a_source_port==-1? ((rand() & 0xffff) | 1024) : a_source_port);
 	checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
-	rawsock_send((char*) packet, sizeof(packet));
-	// http://www.tcpdump.org/pcap.html
+	rawsock_send(packet, sizeof(packet));
 
+	// Sniff response packet
+	do {
+		ret = rawsock_sniff(&ts, &clen, &cpacket);
+		if(ret < 0)
+			goto err;
+	} while(ret == 0);
+	printf("got %d byte packet @%lu\n", clen, ts);
+	
+
+	ret = 0;
+	goto ret;
+	err:
+	ret = 1;
+	ret:
 	rawsock_close();
-	return 0;
+	return ret;
+}
+
+static void usage(void)
+{
+	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in litte time.\n");
+	printf("Usage: fi6s [options] <target specification>\n");
+	printf("Options:\n");
+	printf("  --help                  Show this text\n");
+	printf("  --randomize-hosts <0|1> Randomize order of hosts (defaults to 1)\n");
+	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
+	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
+	printf("  --source-port <port>    Use specified source port for scanning\n");
+	printf("  --interface <if>        Use <if> for capturing and sending packets\n");
+	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
+	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
+	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
+	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
+	printf("  -p <port range(s)>      Only scan specified ports\n");
+	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
+	printf("  -o <file>               Set output file\n");
+	printf("Target specification:\n");
+	printf("  A target specification is basically just a fancy netmask.\n");
+	printf("  Target specs come in three shapes:\n");
+	printf("    2001:db8::/64 (classic subnet notation)\n");
+	printf("      This one should be obvious, you can even omit the number (it defaults to 128).\n");
+	printf("    2001:db8::1/32-48 (subnet range notation)\n");
+	printf("      The resulting netmask will be ffff:ffff:0000:ffff:ffff:ffff:ffff:ffff\n");
+	printf("      This will return all hosts 2001:db8:*::1 with * in range 0000 to ffff\n");
+	printf("    2001:db8::x (wildcard nibble notation)\n");
+	printf("      The resulting netmask will be all f's except the last nibble\n");
+	printf("      This will return all hosts 2001:db8::a, 2001:db8::b ... 2001:db8::f\n");
+	printf("  It is only possible to specify one target specification on the command line,\n");
+	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
 }

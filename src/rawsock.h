@@ -10,6 +10,10 @@
 #define IP_TYPE_TCP 0x06
 #define IP_TYPE_UDP 0x11
 
+#define RAWSOCK_FILTER_IPTYPE  (1 << 0)
+#define RAWSOCK_FILTER_DSTADDR (1 << 1)
+#define RAWSOCK_FILTER_DSTPORT (1 << 2)
+
 struct frame_eth {
 	uint8_t dest[6]; // Destination address
 	uint8_t src[6]; // Source address
@@ -31,8 +35,10 @@ struct frame_ip {
 	uint8_t dest[16]; // Destination Address
 } __attribute__((packed));
 
-int rawsock_open(const char *dev);
-int rawsock_send(const char *pkt, int size);
+int rawsock_open(const char *dev, int buffersize);
+int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_t dstport);
+int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt);
+int rawsock_send(const uint8_t *pkt, int size);
 void rawsock_close(void);
 
 void rawsock_eth_settings(const uint8_t *src, const uint8_t *dst);

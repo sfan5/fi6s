@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h> // isdigit()
 #include <endian.h>
 
 #include "util.h"
@@ -75,6 +76,94 @@ int parse_ipv6(const char *str, uint8_t *dst)
 	}
 
 	return 0;
+}
+
+int parse_ports(const char *str, struct ports *dst)
+{
+	for(int i = 0; i < PORTS_MAX_RANGES; i++) {
+		// init each range as invalid
+		dst->r[i].begin = 1;
+		dst->r[i].end = 0;
+	}
+	if(strcmp(str, "-") == 0) { // all of them
+		dst->r[0].begin = 1;
+		dst->r[0].end = 65535;
+		return 0;
+	}
+
+	const char *p = str;
+	int i = 0;
+	while(1) {
+		char cur[6];
+		int j = 0;
+
+		while(*p && isdigit(*p) && j < 5)
+			cur[j++] = *(p++);
+		cur[j] = '\0';
+		j = strtol_simple(cur, 10);
+		if(j == -1)
+			return -1;
+		dst->r[i].begin = dst->r[i].end = j & 0xffff;
+
+		switch(*(p++)) {
+			case ',':
+				goto next;
+			case '-':
+				break;
+			case '\0':
+				return 0;
+			default:
+				return -1;
+		}
+
+		j = 0;
+		while(*p && isdigit(*p) && j < 5)
+			cur[j++] = *(p++);
+		cur[j] = '\0';
+		j = strtol_simple(cur, 10);
+		if(j == -1)
+			return -1;
+		dst->r[i].end = j & 0xffff;
+		if(dst->r[i].begin > dst->r[i].end)
+			return -1;
+
+		switch(*(p++)) {
+			case ',':
+				break; // goto next
+			case '\0':
+				return 0;
+			default:
+				return -1;
+		}
+		next:
+		i++;
+		if(i >= PORTS_MAX_RANGES)
+			return -1;
+	}
+}
+
+void ports_iter_begin(const struct ports *p, struct ports_iter *it)
+{
+	if(p)
+		it->__p = p;
+	it->__ri = -1;
+}
+
+int ports_iter_next(struct ports_iter *it)
+{
+	if(it->__ri == -1)
+		goto next_range;
+	it->val++;
+	if(it->val > it->__p->r[it->__ri].end)
+		goto next_range;
+	return 1;
+	next_range:
+	it->__ri++;
+	if(it->__ri >= PORTS_MAX_RANGES ||
+		it->__p->r[it->__ri].begin > it->__p->r[it->__ri].end) // check if next range is valid
+		return 0;
+	it->val = it->__p->r[it->__ri].begin;
+	return 1;
 }
 
 int strtol_suffix(const char *str)

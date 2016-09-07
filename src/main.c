@@ -17,6 +17,7 @@ static int mainloop(void);
 static int a_source_port;
 static char *a_interface;
 static uint8_t a_source_addr[16];
+static struct ports a_ports;
 
 int main(int argc, char *argv[])
 {
@@ -26,7 +27,7 @@ int main(int argc, char *argv[])
 		{"max-rate", required_argument, 0, 'X'},
 		{"output-format", required_argument, 0, 'W'},
 		{"interface", required_argument, 0, 'V'},
-		{"source-mac", required_argument, 0, 'U'}, // TODO: find out all {source,router}-mac and source-ip automatically
+		{"source-mac", required_argument, 0, 'U'}, // TODO: find out {source,router}-mac and source-ip automatically
 		{"router-mac", required_argument, 0, 'T'},
 		{"source-ip", required_argument, 0, 'S'},
 		{"source-port", required_argument, 0, 'R'},
@@ -119,7 +120,10 @@ int main(int argc, char *argv[])
 				usage();
 				return 1;
 			case 'p':
-				// TODO
+				if(parse_ports(optarg, &a_ports) < 0) {
+					printf("Argument to -p must be valid port range(s)\n");
+					return 1;
+				}
 				break;
 			case 'o':
 				// TODO
@@ -180,6 +184,7 @@ int mainloop(void)
 		return 1;
 	int ret;
 
+
 	// Set filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
 	if(a_source_port != -1)
@@ -187,46 +192,65 @@ int mainloop(void)
 	if(rawsock_setfilter(fflags, IP_TYPE_TCP, a_source_addr, a_source_port) < 0)
 		goto err;
 
-	// Send TCP packet
+
 	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
 	uint8_t dstaddr[16];
+	struct ports_iter it;
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
 	if(target_gen_next(dstaddr) < 0)
-		return 1;
+		goto err;
 	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
-	make_a_syn_pkt_pls(TCP_HEADER(packet), 80, a_source_port==-1? ((rand() & 0xffff) | 1024) : a_source_port);
-	checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
-	rawsock_send(packet, sizeof(packet));
+	ports_iter_begin(&a_ports, &it);
 
-	// Sniff response packet
 	uint64_t ts;
 	int clen;
 	const uint8_t *cpacket;
-	do {
-		ret = rawsock_sniff(&ts, &clen, &cpacket);
-		if(ret < 0)
-			goto err;
-	} while(ret == 0);
-	printf("got %d byte packet @%lu\n", clen, ts);
 
-	// Decode response packet
 	int v;
 	const uint8_t *csrcaddr;
-	if(clen < FRAME_ETH_SIZE)
-		goto err;
-	rawsock_eth_decode(ETH_FRAME(cpacket), &v);
-	if(v != ETH_TYPE_IPV6 || clen < FRAME_ETH_SIZE + FRAME_IP_SIZE)
-		goto err;
-	rawsock_ip_decode(IP_FRAME(cpacket), &v, NULL, &csrcaddr, NULL);
-	if(v != IP_TYPE_TCP || clen < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
-		goto err;
-	if(TCP_HEADER(cpacket)->f_syn && TCP_HEADER(cpacket)->f_ack) {
-		decode_pkt_pls(TCP_HEADER(cpacket), &v, NULL);
-		char tmp[IPV6_STRING_MAX];
-		ipv6_string(tmp, csrcaddr);
-		printf("%s port %d open\n", tmp, v);
+
+	while(1) {
+		// Send TCP packet
+		if(ports_iter_next(&it) == 0) {
+			if(target_gen_next(dstaddr) < 0)
+				break; // no more targets
+			rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
+			ports_iter_begin(NULL, &it);
+		}
+		make_a_syn_pkt_pls(TCP_HEADER(packet), it.val, a_source_port==-1? ((rand() & 0xffff) | 1024) : a_source_port);
+		checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
+		rawsock_send(packet, sizeof(packet));
+
+		// Sniff response packet
+		do {
+			ret = rawsock_sniff(&ts, &clen, &cpacket);
+			if(ret < 0)
+				goto err;
+		} while(ret == 0);
+		printf("got %d byte packet @%lu\n", clen, ts);
+
+		// Decode response packet
+		if(clen < FRAME_ETH_SIZE)
+			goto perr;
+		rawsock_eth_decode(ETH_FRAME(cpacket), &v);
+		if(v != ETH_TYPE_IPV6 || clen < FRAME_ETH_SIZE + FRAME_IP_SIZE)
+			goto perr;
+		rawsock_ip_decode(IP_FRAME(cpacket), &v, NULL, &csrcaddr, NULL);
+		if(v != IP_TYPE_TCP || clen < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
+			goto perr;
+		if(TCP_HEADER(cpacket)->f_ack && (TCP_HEADER(cpacket)->f_syn || TCP_HEADER(cpacket)->f_rst)) {
+			decode_pkt_pls(TCP_HEADER(cpacket), &v, NULL);
+			char tmp[IPV6_STRING_MAX];
+			ipv6_string(tmp, csrcaddr);
+			printf("%s port %d %s\n", tmp, v, TCP_HEADER(cpacket)->f_syn?"open":"closed");
+		}
+
+		continue;
+		perr:
+		printf("Failed to parse sniffed packet\n");
 	}
+
 
 	ret = 0;
 	goto ret;
@@ -252,7 +276,7 @@ static void usage(void)
 	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
 	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
 	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
-	printf("  -p <port range(s)>      Only scan specified ports\n");
+	printf("  -p <port range(s)>      Only scan specified ports (\"-\" is short for 1-65535)\n");
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
 	printf("Target specification:\n");

@@ -59,7 +59,7 @@ void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, const u
 	if(length)
 		*length = be16toh(f->len);
 	if(src)
-		*src = &f->src;
+		*src = (const uint8_t*) &f->src;
 	if(dst)
-		*dst = &f->dest;
+		*dst = (const uint8_t*) &f->dest;
 }

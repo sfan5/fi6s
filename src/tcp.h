@@ -29,5 +29,6 @@ struct frame_ip;
 
 void make_a_syn_pkt_pls(struct tcp_header* pkt, int dstport, int srcport);
 void checksum_pkt_pls(const struct frame_ip *ipf, struct tcp_header *pkt);
+void decode_pkt_pls(const struct tcp_header *pkt, int *srcport, int *dstport);
 
 #endif // _TCP_H

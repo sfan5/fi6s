@@ -56,6 +56,14 @@ void checksum_pkt_pls(const struct frame_ip *ipf, struct tcp_header *pkt)
 	pkt->csum = chksum((uint16_t*) tmp, sizeof(tmp));
 }
 
+void decode_pkt_pls(const struct tcp_header *pkt, int *srcport, int *dstport)
+{
+	if(srcport)
+		*srcport = be16toh(pkt->srcport);
+	if(dstport)
+		*dstport = be16toh(pkt->dstport);
+}
+
 static uint16_t chksum(const uint16_t *p, int n)
 {
 	register uint32_t sum;

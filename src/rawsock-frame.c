@@ -22,6 +22,11 @@ void rawsock_eth_prepare(struct frame_eth *f, int type)
 	f->type = htobe16(type & 0xffff);
 }
 
+void rawsock_eth_decode(const struct frame_eth *f, int *type)
+{
+	*type = be16toh(f->type);
+}
+
 
 void rawsock_ip_settings(const uint8_t *src, int ttl)
 {
@@ -45,4 +50,16 @@ void rawsock_ip_modify(struct frame_ip *f, int length, const uint8_t *dst)
 {
 	f->len = htobe16(length & 0xffff);
 	memcpy(f->dest, dst, 16);
+}
+
+void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, const uint8_t **src, const uint8_t **dst)
+{
+	if(type)
+		*type = f->next;
+	if(length)
+		*length = be16toh(f->len);
+	if(src)
+		*src = &f->src;
+	if(dst)
+		*dst = &f->dest;
 }

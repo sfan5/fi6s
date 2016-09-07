@@ -178,11 +178,7 @@ int mainloop(void)
 {
 	if(rawsock_open(a_interface, 2048) < 0)
 		return 1;
-	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
-	const uint8_t *cpacket;
-	uint8_t dstaddr[16];
-	uint64_t ts;
-	int ret, clen;
+	int ret;
 
 	// Set filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
@@ -192,6 +188,8 @@ int mainloop(void)
 		goto err;
 
 	// Send TCP packet
+	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
+	uint8_t dstaddr[16];
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
 	if(target_gen_next(dstaddr) < 0)
@@ -202,13 +200,33 @@ int mainloop(void)
 	rawsock_send(packet, sizeof(packet));
 
 	// Sniff response packet
+	uint64_t ts;
+	int clen;
+	const uint8_t *cpacket;
 	do {
 		ret = rawsock_sniff(&ts, &clen, &cpacket);
 		if(ret < 0)
 			goto err;
 	} while(ret == 0);
 	printf("got %d byte packet @%lu\n", clen, ts);
-	
+
+	// Decode response packet
+	int v;
+	const uint8_t *csrcaddr;
+	if(clen < FRAME_ETH_SIZE)
+		goto err;
+	rawsock_eth_decode(ETH_FRAME(cpacket), &v);
+	if(v != ETH_TYPE_IPV6 || clen < FRAME_ETH_SIZE + FRAME_IP_SIZE)
+		goto err;
+	rawsock_ip_decode(IP_FRAME(cpacket), &v, NULL, &csrcaddr, NULL);
+	if(v != IP_TYPE_TCP || clen < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
+		goto err;
+	if(TCP_HEADER(cpacket)->f_syn && TCP_HEADER(cpacket)->f_ack) {
+		decode_pkt_pls(TCP_HEADER(cpacket), &v, NULL);
+		char tmp[IPV6_STRING_MAX];
+		ipv6_string(tmp, csrcaddr);
+		printf("%s port %d open\n", tmp, v);
+	}
 
 	ret = 0;
 	goto ret;
@@ -221,7 +239,7 @@ int mainloop(void)
 
 static void usage(void)
 {
-	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in litte time.\n");
+	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in little time.\n");
 	printf("Usage: fi6s [options] <target specification>\n");
 	printf("Options:\n");
 	printf("  --help                  Show this text\n");

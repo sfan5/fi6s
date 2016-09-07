@@ -119,10 +119,12 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 	for(int i = 0; i < 16; i++)
 		dst[i] = t->spec.addr[i] | t->cur[i];
 	// do manual addition on t->cur while ignoring positions set in t->spec.mask
+	int any = 0;
 	for(int i = 15; i >= 0; i--) {
 		for(int j = 1; j != (1 << 8); j <<= 1) {
 			if(t->spec.mask[i] & j)
 				continue;
+			any = 1;
 			if(t->cur[i] & j) {
 				t->cur[i] &= ~j; // unset & carry
 				carry = 1;
@@ -134,7 +136,8 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 		}
 	}
 	out:
-	// if there's carry left over, delete target so this isn't called again
-	if(carry == 1)
+	// if there's carry left over or if there's the mask has all bits set:
+	// delete target so this isn't called again
+	if(!any || carry == 1)
 		t->used = 0;
 }

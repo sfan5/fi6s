@@ -239,7 +239,7 @@ static void usage(void)
 	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
 	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
 	printf("  -p <port range(s)>      Only scan specified ports (\"-\" is short for 1-65535)\n");
-	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
+	//printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
 	printf("  -q                      Do not output periodic status message\n");
 	printf("Target specification:\n");

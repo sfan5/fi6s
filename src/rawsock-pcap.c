@@ -24,7 +24,7 @@ int rawsock_open(const char *dev, int buffersize)
 			fprintf(stderr, "Couldn't determine default interface: %s\n", errbuf);
 			return -1;
 		}
-		printf("Using default interface '%s'\n", dev);
+		fprintf(stderr, "Using default interface '%s'\n", dev);
 	}
 	handle = pcap_open_live(dev, buffersize, 0, 1000, errbuf);
 	if(!handle) {

@@ -48,7 +48,7 @@ int scan_main(const char *interface, int quiet)
 {
 	if(rawsock_open(interface, 2048) < 0)
 		return -1;
-	setvbuf(stdout, NULL, _IONBF, 0);
+	setvbuf(outfile, NULL, _IOLBF, 512);
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	send_finished = false;
@@ -76,7 +76,7 @@ int scan_main(const char *interface, int quiet)
 		cur_recv = atomic_exchange(&pkts_recv, 0);
 		float progress = target_gen_progress();
 		if(!quiet)
-			printf("snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
+			fprintf(stderr, "snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
 		if(send_finished) {
 			rawsock_breakloop();
 			break;
@@ -85,10 +85,10 @@ int scan_main(const char *interface, int quiet)
 		usleep(STATS_INTERVAL * 1000);
 	}
 
-	printf("\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
+	fprintf(stderr, "\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
 	usleep(FINISH_WAIT_TIME * 1000 * 1000);
 	if(!quiet)
-		printf("rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
+		fprintf(stderr, "rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
 
 	int r = 0;
 	ret:
@@ -146,7 +146,7 @@ static void *recv_thread(void *unused)
 {
 	(void) unused;
 	if(rawsock_loop(recv_handler) < 0)
-		printf("An error occurred in packet capture\n");
+		fprintf(stderr, "An error occurred in packet capture\n");
 	return NULL;
 }
 
@@ -180,7 +180,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	return;
 	perr:
 #ifndef NDEBUG
-	printf("Failed to decode packet of length %d\n", len);
+	fprintf(stderr, "Failed to decode packet of length %d\n", len);
 #endif
 	;
 }

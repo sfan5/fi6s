@@ -22,6 +22,7 @@ static atomic_uint pkts_sent, pkts_recv;
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
 static void *recv_thread(void *unused);
+static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 
 #define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )
 #define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
@@ -74,7 +75,7 @@ int scan_main(const char *interface, int quiet)
 		printf("snt:%4u rcv:%4u\r", cur_sent, cur_recv);
 
 		skip:
-		usleep(1000 * 1000);
+		usleep(STATS_INTERVAL * 1000);
 	}
 
 	int r = 0;
@@ -129,44 +130,44 @@ static void *send_thread(void *unused)
 
 static void *recv_thread(void *unused)
 {
-	int ret, len;
-	uint64_t ts;
-	const uint8_t *packet;
+	(void) unused;
+	if(rawsock_loop(recv_handler) < 0)
+		printf("An error occurred in packet capture\n");
+	return NULL;
+}
 
+static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
+{
 	int v;
 	const uint8_t *csrcaddr;
 
-	(void) unused;
-	while(1) {
-		// Wait for packet
-		do {
-			ret = rawsock_sniff(&ts, &len, &packet);
-			if(ret < 0)
-				return NULL;
-		} while(ret == 0);
-		atomic_fetch_add(&pkts_recv, 1);
-		printf("<< @%lu -- %d bytes\n", ts, len);
+	atomic_fetch_add(&pkts_recv, 1);
+	printf("<< @%lu -- %d bytes\n", ts, len);
 
-		// Decode it and output results
-		if(len < FRAME_ETH_SIZE)
-			goto perr;
-		rawsock_eth_decode(ETH_FRAME(packet), &v);
-		if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
-			goto perr;
-		rawsock_ip_decode(IP_FRAME(packet), &v, NULL, &csrcaddr, NULL);
-		if(v != IP_TYPE_TCP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
-			goto perr;
-		if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
-			decode_pkt_pls(TCP_HEADER(packet), &v, NULL);
-			char tmp[IPV6_STRING_MAX];
-			ipv6_string(tmp, csrcaddr);
-			printf("%s port %d %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");
-		}
+	// Decode
+	if(len < FRAME_ETH_SIZE)
+		goto perr;
+	rawsock_eth_decode(ETH_FRAME(packet), &v);
+	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
+		goto perr;
+	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, &csrcaddr, NULL);
+	if(v != IP_TYPE_TCP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
+		goto perr;
 
-		continue;
-		perr:
-		printf("Packet decoding error...\n");
+	// Output stuff
+	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
+		decode_pkt_pls(TCP_HEADER(packet), &v, NULL);
+		char tmp[IPV6_STRING_MAX];
+		ipv6_string(tmp, csrcaddr);
+		printf("%s port %d %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");
 	}
+
+	return;
+	perr:
+#ifndef NDEBUG
+	printf("Failed to decode packet of length %d\n", len);
+#endif
+	;
 }
 
 static inline int source_port_rand(void)

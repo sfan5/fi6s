@@ -12,6 +12,8 @@ typedef unsigned int u_int;
 
 static pcap_t *handle;
 
+static void callback_fwd(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
+
 int rawsock_open(const char *dev, int buffersize)
 {
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -94,15 +96,37 @@ int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt)
 	return 1;
 }
 
+int rawsock_loop(rawsock_callback func)
+{
+	int r = pcap_loop(handle, -1, callback_fwd, (u_char*) func);
+	if(r == -2)
+		r = 0;
+	return r;
+}
+
+void rawsock_breakloop(void)
+{
+	pcap_breakloop(handle);
+}
+
 int rawsock_send(const uint8_t *pkt, int size)
 {
 	int r = pcap_sendpacket(handle, pkt, size);
+#ifndef NDEBUG
 	if(r == -1)
 		pcap_perror(handle, "");
+#endif
 	return r;
 }
 
 void rawsock_close(void)
 {
 	pcap_close(handle);
+}
+
+static void callback_fwd(u_char *user, const struct pcap_pkthdr *hdr, const u_char *pkt)
+{
+	if(hdr->caplen < hdr->len)
+		return;
+	((rawsock_callback) user)(hdr->ts.tv_sec, hdr->caplen, pkt);
 }

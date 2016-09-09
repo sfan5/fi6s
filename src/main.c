@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 		{"randomize-hosts", required_argument, 0, 'Z'},
 		{"echo-hosts", no_argument, 0, 'Y'},
 		{"max-rate", required_argument, 0, 'X'},
-		{"output-format", required_argument, 0, 'W'},
+		//{"output-format", required_argument, 0, 'W'},
 		{"interface", required_argument, 0, 'V'},
 		{"source-mac", required_argument, 0, 'U'}, // TODO: find out {source,router}-mac and source-ip automatically
 		{"router-mac", required_argument, 0, 'T'},
@@ -38,6 +38,7 @@ int main(int argc, char *argv[])
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
 	char *interface = NULL;
 	struct ports ports;
+	FILE *outfile = stdout;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:q", long_options, NULL);
@@ -63,7 +64,7 @@ int main(int argc, char *argv[])
 				max_rate = val;
 				break;
 			}
-			case 'W':
+			/*case 'W':
 				if(strcmp(optarg, "list") != 0 &&
 					strcmp(optarg, "json") != 0 &&
 					strcmp(optarg, "binary") != 0) {
@@ -71,7 +72,7 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				// TODO
-				break;
+				break;*/
 			case 'V':
 				interface = optarg;
 				break;
@@ -121,9 +122,15 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				break;
-			case 'o':
-				// TODO
+			case 'o': {
+				FILE *f = fopen(optarg, "wb");
+				if(!f) {
+					printf("Failed to open output file for writing.\n");
+					return 1;
+				}
+				outfile = f;
 				break;
+			}
 			case 'q':
 				quiet = 1;
 				break;
@@ -192,11 +199,12 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		scan_settings(source_addr, source_port, &ports, max_rate);
+		scan_settings(source_addr, source_port, &ports, max_rate, outfile);
 		r = scan_main(interface, quiet) < 0 ? 1 : 0;
 	}
 
 	target_gen_fini();
+	fclose(outfile);
 	return r;
 }
 

@@ -17,6 +17,7 @@ static uint8_t source_addr[16];
 static int source_port;
 static struct ports ports;
 static int max_rate;
+static FILE *outfile;
 
 static atomic_uint pkts_sent, pkts_recv;
 static bool send_finished;
@@ -34,12 +35,13 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 #warning Non lock-free atomic types will severely affect performance.
 #endif
 
-void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate)
+void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate, FILE *_outfile)
 {
 	memcpy(source_addr, _source_addr, 16);
 	source_port = _source_port;
 	memcpy(&ports, _ports, sizeof(struct ports));
 	max_rate = _max_rate - 1;
+	outfile = _outfile;
 }
 
 int scan_main(const char *interface, int quiet)
@@ -171,7 +173,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 		decode_pkt_pls(TCP_HEADER(packet), &v, NULL);
 		char tmp[IPV6_STRING_MAX];
 		ipv6_string(tmp, csrcaddr);
-		printf("%s port %d %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");
+		fprintf(outfile, "%s port %d is %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");
 	}
 
 	return;

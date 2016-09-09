@@ -7,11 +7,11 @@ though it has not reached a similar feature set yet.
 
 ## Building
 
-Building should be fairly easy *IF* your software is recent enough:
+Building should be fairly easy **IF** your software is recent enough:
 On Ubuntu 16.04 (xenial) it looks like this:
 
 	# apt install gcc make git libpcap-dev
-	$ git clone $REPO_URL
+	$ git clone https://github.com/sfan5/fi6s.git
 	$ cd fi6s
 	$ make BUILD_TYPE=release
 

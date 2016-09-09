@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
 		r = 0;
 	} else {
 		scan_settings(a_source_addr, a_source_port, &a_ports);
-		r = scan_main(a_interface) < 0 ? 1 : 0;
+		r = scan_main(a_interface, 0) < 0 ? 1 : 0;
 	}
 
 	target_gen_fini();

@@ -1,4 +1,4 @@
-CFLAGS = -pipe -std=c11 -Wall -Wextra -Wno-sign-compare
+CFLAGS = -pipe -std=c11 -Wall -Wextra -Wno-sign-compare -pthread
 CFLAGS += -O1 -g
 LDFLAGS =
 LIBS = -lpcap

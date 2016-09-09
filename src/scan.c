@@ -1,6 +1,7 @@
 #define _DEFAULT_SOURCE
 #include <stdio.h>
 #include <stdlib.h> // rand()
+#include <stdbool.h>
 #include <string.h>
 #include <unistd.h> // usleep()
 #include <stdatomic.h>
@@ -18,6 +19,7 @@ static struct ports ports;
 static int max_rate;
 
 static atomic_uint pkts_sent, pkts_recv;
+static bool send_finished;
 
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
@@ -47,6 +49,7 @@ int scan_main(const char *interface, int quiet)
 	setvbuf(stdout, NULL, _IONBF, 0);
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
+	send_finished = false;
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
@@ -64,19 +67,25 @@ int scan_main(const char *interface, int quiet)
 		goto err;
 	pthread_detach(tr);
 
-	// Stats
+	// Stats & progress watching
 	while(1) {
-		if(quiet)
-			goto skip;
-
 		unsigned int cur_sent, cur_recv;
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
-		printf("snt:%4u rcv:%4u\r", cur_sent, cur_recv);
+		if(!quiet)
+			printf("snt:%4u rcv:%4u\r", cur_sent, cur_recv);
+		if(send_finished) {
+			rawsock_breakloop();
+			break;
+		}
 
-		skip:
 		usleep(STATS_INTERVAL * 1000);
 	}
+
+	printf("\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
+	usleep(FINISH_WAIT_TIME * 1000 * 1000);
+	if(!quiet)
+		printf("rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
 
 	int r = 0;
 	ret:
@@ -125,6 +134,7 @@ static void *send_thread(void *unused)
 		}
 	}
 
+	send_finished = true;
 	return NULL;
 }
 
@@ -142,7 +152,8 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	const uint8_t *csrcaddr;
 
 	atomic_fetch_add(&pkts_recv, 1);
-	printf("<< @%lu -- %d bytes\n", ts, len);
+	(void) ts;
+	//printf("<< @%lu -- %d bytes\n", ts, len);
 
 	// Decode
 	if(len < FRAME_ETH_SIZE)

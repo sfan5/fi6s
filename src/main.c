@@ -34,13 +34,13 @@ int main(int argc, char *argv[])
 
 	int echo_hosts = 0, randomize_hosts = 1,
 		ttl = 64, max_rate = -1,
-		source_port = -1;
+		source_port = -1, quiet = 0;
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
 	char *interface = NULL;
 	struct ports ports;
 
 	while(1) {
-		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
+		int c = getopt_long(argc, argv, "hp:o:q", long_options, NULL);
 		if(c == -1)
 			break;
 		switch(c) {
@@ -124,6 +124,9 @@ int main(int argc, char *argv[])
 			case 'o':
 				// TODO
 				break;
+			case 'q':
+				quiet = 1;
+				break;
 			default:
 				break;
 		}
@@ -190,7 +193,7 @@ int main(int argc, char *argv[])
 		r = 0;
 	} else {
 		scan_settings(source_addr, source_port, &ports, max_rate);
-		r = scan_main(interface, 0) < 0 ? 1 : 0;
+		r = scan_main(interface, quiet) < 0 ? 1 : 0;
 	}
 
 	target_gen_fini();
@@ -215,6 +218,7 @@ static void usage(void)
 	printf("  -p <port range(s)>      Only scan specified ports (\"-\" is short for 1-65535)\n");
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
+	printf("  -q                      Do not output periodic status message\n");
 	printf("Target specification:\n");
 	printf("  A target specification is basically just a fancy netmask.\n");
 	printf("  Target specs come in three shapes:\n");

@@ -1,11 +1,13 @@
 #define _DEFAULT_SOURCE // htobe{16,32}()
 #include <string.h>
 #include <endian.h>
+#include <assert.h>
 
 #include "tcp.h"
 #include "rawsock.h"
 
 #define PSEUDO_HEADER_SIZE 40
+#define CHKSUM_INITAL 0x0000
 
 // pseudo IPv6 header utilized in checksumming
 struct pseudo_header {
@@ -16,7 +18,8 @@ struct pseudo_header {
 	uint8_t ipproto;
 } __attribute__((packed));
 
-static uint16_t chksum(const uint16_t *p, int n);
+static inline void chksum(uint32_t *tmp, const uint16_t *p, int n);
+static uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n);
 static inline void reset_flags(struct tcp_header *pkt);
 
 void tcp_prepare(struct tcp_header *pkt)
@@ -44,19 +47,18 @@ void tcp_synpkt(struct tcp_header *pkt)
 
 void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt)
 {
-	// TODO: avoid copying stuff
-	uint8_t _Alignas(uint16_t) tmp[PSEUDO_HEADER_SIZE + TCP_HEADER_SIZE];
-	struct pseudo_header *ph = (struct pseudo_header*) tmp;
+	const _Alignas(uint16_t) struct pseudo_header ph = {
+		.len = htobe32(TCP_HEADER_SIZE),
+		.zero = {0},
+		.ipproto = 0x06, // IPPROTO_TCP
+	};
+	uint32_t csum = CHKSUM_INITAL;
 
+	chksum(&csum, (uint16_t*) ipf->src, 16); // ph->src
+	chksum(&csum, (uint16_t*) ipf->dest, 16); // ph->dest
+	chksum(&csum, (uint16_t*) &ph.len, 8); // rest of ph
 	pkt->csum = 0;
-	memcpy(&tmp[PSEUDO_HEADER_SIZE], pkt, TCP_HEADER_SIZE);
-	memcpy(ph->src, ipf->src, 16);
-	memcpy(ph->dest, ipf->dest, 16);
-	ph->len = htobe32(TCP_HEADER_SIZE);
-	memset(ph->zero, 0, 3);
-	ph->ipproto = 0x06; // IPPROTO_TCP
-
-	pkt->csum = chksum((uint16_t*) tmp, sizeof(tmp));
+	pkt->csum = chksum_final(csum, (uint16_t*) pkt, TCP_HEADER_SIZE); // packet contents
 }
 
 void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport)
@@ -77,11 +79,17 @@ static inline void reset_flags(struct tcp_header *pkt)
 	pkt->f_urg = 0;
 }
 
-static uint16_t chksum(const uint16_t *p, int n)
+static inline void chksum(uint32_t *tmp, const uint16_t *p, int n)
 {
-	register uint32_t sum;
+	assert(n % 2 == 0);
+	while(n > 0) {
+		*tmp += *p++;
+		n -= 2;
+	}
+}
 
-	sum = 0;
+static uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)
+{
 	while(n > 1) {
 		sum += *p++;
 		n -= 2;

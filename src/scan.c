@@ -72,8 +72,9 @@ int scan_main(const char *interface, int quiet)
 		unsigned int cur_sent, cur_recv;
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
+		float progress = target_gen_progress();
 		if(!quiet)
-			printf("snt:%4u rcv:%4u\r", cur_sent, cur_recv);
+			printf("snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
 		if(send_finished) {
 			rawsock_breakloop();
 			break;

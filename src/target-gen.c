@@ -5,7 +5,7 @@
 #include "target.h"
 
 struct targetstate {
-	int used;
+	int used:1, done:1;
 	struct targetspec spec;
 	uint8_t cur[16];
 };
@@ -13,6 +13,7 @@ struct targetstate {
 static void shuffle(void *buf, int stride, int n);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
+static void progress_single(const struct targetstate *t, uint32_t *total, uint32_t *rem);
 
 
 static int randomize = 1;
@@ -43,6 +44,22 @@ void target_gen_set_randomized(int v)
 	randomize = v ? 1 : 0;
 }
 
+float target_gen_progress(void)
+{
+	// What we do here is beyond horrible:
+	// We go through the bitmasks and assemble the number of hosts total and remaining
+	// Those are added together and used to calculate the percentage (don't forget the cache though!)
+	// This obviously fails horribly if you intend to scan more than 2**32 hosts
+	uint32_t total = 0, rem = 0;
+	for(int i = 0; i < MAX_TARGETS; i++) {
+		if(!targets[i].used)
+			continue;
+		progress_single(&targets[i], &total, &rem);
+	}
+	rem += cache_size - cache_i;
+	return (total == 0 || rem == 0) ? 1.0 : ( (total - rem) / (float) total );
+}
+
 void target_gen_fini(void)
 {
 	free(cache);
@@ -60,6 +77,7 @@ int target_gen_add(const struct targetspec *s)
 	if(i == -1)
 		return -1;
 	targets[i].used = 1;
+	targets[i].done = 0;
 	memcpy(&targets[i].spec, s, sizeof(struct targetspec));
 	memset(targets[i].cur, 0, 16);
 	return 0;
@@ -97,7 +115,7 @@ static void fill_cache(void)
 	while(1) {
 		int any = 0;
 		for(int i = 0; i < MAX_TARGETS; i++) {
-			if(!targets[i].used)
+			if(!targets[i].used || targets[i].done)
 				continue;
 			any = 1;
 			next_addr(&targets[i], &cache[cache_size*16]);
@@ -136,8 +154,25 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 		}
 	}
 	out:
-	// if there's carry left over or if there's the mask has all bits set:
-	// delete target so this isn't called again
+	// mark target as done
+	// if there's carry left over or if there's the mask has all bits set
 	if(!any || carry == 1)
-		t->used = 0;
+		t->done = 1;
+}
+
+static void progress_single(const struct targetstate *t, uint32_t *total, uint32_t *rem)
+{
+	int bits = 0;
+	uint32_t _rem = 0;
+	for(int i = 15; i >= 0; i--) {
+		for(int j = 1; j != (1 << 8); j <<= 1) {
+			if(t->spec.mask[i] & j)
+				continue;
+			bits++;
+			_rem |= !!(t->cur[i] & j);
+			_rem <<= 1;
+		}
+	}
+	*total += 1 << bits;
+	*rem += _rem;
 }

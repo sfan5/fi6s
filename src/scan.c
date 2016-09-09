@@ -112,10 +112,12 @@ static void *send_thread(void *unused)
 	if(target_gen_next(dstaddr) < 0)
 		return NULL;
 	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
+	tcp_prepare(TCP_HEADER(packet));
+	tcp_synpkt(TCP_HEADER(packet));
 	ports_iter_begin(&ports, &it);
 
 	while(1) {
-		// Next port number/target
+		// Next port number (or target if ports exhausted)
 		if(ports_iter_next(&it) == 0) {
 			if(target_gen_next(dstaddr) < 0)
 				break; // no more targets
@@ -124,9 +126,8 @@ static void *send_thread(void *unused)
 			continue;
 		}
 
-		// Make, checksum and send syn packet
-		make_a_syn_pkt_pls(TCP_HEADER(packet), it.val, source_port==-1?source_port_rand():source_port);
-		checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
+		tcp_modify(TCP_HEADER(packet), source_port==-1?source_port_rand():source_port, it.val);
+		tcp_checksum(IP_FRAME(packet), TCP_HEADER(packet));
 		rawsock_send(packet, sizeof(packet));
 
 		// Rate control
@@ -170,7 +171,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 
 	// Output stuff
 	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
-		decode_pkt_pls(TCP_HEADER(packet), &v, NULL);
+		tcp_decode(TCP_HEADER(packet), &v, NULL);
 		char tmp[IPV6_STRING_MAX];
 		ipv6_string(tmp, csrcaddr);
 		fprintf(outfile, "%s port %d is %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");

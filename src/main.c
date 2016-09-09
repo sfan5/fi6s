@@ -141,8 +141,34 @@ int main(int argc, char *argv[])
 
 	const char *tspec = argv[optind];
 	if(*tspec == '@') { // load from file
-		// TODO
-		return 123;
+		FILE *f;
+		char buf[128];
+		f = fopen(&tspec[1], "r");
+		if(!f) {
+			printf("Failed to open target list for reading.\n");
+			return 1;
+		}
+		while(fgets(buf, sizeof(buf), f) != NULL) {
+			char *ptr;
+			struct targetspec t;
+
+			ptr = buf + strlen(buf) - 1;
+			while(ptr > buf && (*ptr == '\r' || *ptr == '\n'))
+				ptr--;
+			*(ptr + 1) = '\0';
+
+			if(target_parse(buf, &t) < 0) {
+				printf("Failed to parse target spec \"%s\".\n", buf);
+				fclose(f);
+				return 1;
+			}
+			if(target_gen_add(&t) < 0) {
+				printf("Too many targets specified in file.\n");
+				fclose(f);
+				return 1;
+			}
+		}
+		fclose(f);
 	} else {
 		struct targetspec t;
 		if(target_parse(tspec, &t) < 0) {

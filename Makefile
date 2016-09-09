@@ -7,7 +7,7 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
 SRC = \
-	main.c util.c \
+	main.c util.c scan.c \
 	target-parse.c target-gen.c \
 	rawsock-pcap.c rawsock-frame.c \
 	tcp.c

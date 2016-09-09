@@ -15,6 +15,8 @@
 static uint8_t source_addr[16];
 static int source_port;
 static struct ports ports;
+static int max_rate;
+
 static atomic_uint pkts_sent, pkts_recv;
 
 static inline int source_port_rand(void);
@@ -29,11 +31,12 @@ static void *recv_thread(void *unused);
 #warning Non lock-free atomic types will severely affect performance.
 #endif
 
-void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports)
+void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate)
 {
 	memcpy(source_addr, _source_addr, 16);
 	source_port = _source_port;
 	memcpy(&ports, _ports, sizeof(struct ports));
+	max_rate = _max_rate - 1;
 }
 
 int scan_main(const char *interface, int quiet)
@@ -112,7 +115,13 @@ static void *send_thread(void *unused)
 		make_a_syn_pkt_pls(TCP_HEADER(packet), it.val, source_port==-1?source_port_rand():source_port);
 		checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
 		rawsock_send(packet, sizeof(packet));
-		atomic_fetch_add(&pkts_sent, 1);
+
+		// Rate control
+		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
+			// FIXME: this doesn't seem like a good idea
+			while(atomic_load(&pkts_sent) != 0)
+				usleep(1000);
+		}
 	}
 
 	return NULL;
@@ -156,7 +165,7 @@ static void *recv_thread(void *unused)
 
 		continue;
 		perr:
-		printf("failed to decode packet...\n");
+		printf("Packet decoding error...\n");
 	}
 }
 

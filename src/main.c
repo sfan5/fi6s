@@ -13,11 +13,6 @@
 
 static void usage(void);
 
-static int a_source_port;
-static char *a_interface;
-static uint8_t a_source_addr[16];
-static struct ports a_ports;
-
 int main(int argc, char *argv[])
 {
 	const struct option long_options[] = {
@@ -37,10 +32,12 @@ int main(int argc, char *argv[])
 		{0,0,0,0},
 	};
 
-	int echo_hosts = 0, randomize_hosts = 1, ttl = 64;
-	uint8_t source_mac[6], router_mac[6];
-	a_source_port = -1;
-	a_interface = NULL;
+	int echo_hosts = 0, randomize_hosts = 1,
+		ttl = 64, max_rate = -1,
+		source_port = -1;
+	uint8_t source_mac[6], router_mac[6], source_addr[16];
+	char *interface = NULL;
+	struct ports ports;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:", long_options, NULL);
@@ -63,7 +60,7 @@ int main(int argc, char *argv[])
 					printf("Argument to --max-rate must be positive\n");
 					return 1;
 				}
-				// TODO
+				max_rate = val;
 				break;
 			}
 			case 'W':
@@ -76,7 +73,7 @@ int main(int argc, char *argv[])
 				// TODO
 				break;
 			case 'V':
-				a_interface = optarg;
+				interface = optarg;
 				break;
 			case 'U':
 				if(parse_mac(optarg, source_mac) < 0) {
@@ -91,7 +88,7 @@ int main(int argc, char *argv[])
 				}
 				break;
 			case 'S':
-				if(parse_ipv6(optarg, a_source_addr) < 0) {
+				if(parse_ipv6(optarg, source_addr) < 0) {
 					printf("Argument to --source-addr is not a valid IPv6 address\n");
 					return 1;
 				}
@@ -102,7 +99,7 @@ int main(int argc, char *argv[])
 					printf("Argument to --source-port must be in range 1-65535\n");
 					return 1;
 				}
-				a_source_port = val;
+				source_port = val;
 				break;
 			}
 			case 'Q': {
@@ -119,7 +116,7 @@ int main(int argc, char *argv[])
 				usage();
 				return 1;
 			case 'p':
-				if(parse_ports(optarg, &a_ports) < 0) {
+				if(parse_ports(optarg, &ports) < 0) {
 					printf("Argument to -p must be valid port range(s)\n");
 					return 1;
 				}
@@ -140,7 +137,7 @@ int main(int argc, char *argv[])
 	target_gen_init();
 	target_gen_set_randomized(randomize_hosts);
 	rawsock_eth_settings(source_mac, router_mac);
-	rawsock_ip_settings(a_source_addr, ttl);
+	rawsock_ip_settings(source_addr, ttl);
 
 	const char *tspec = argv[optind];
 	if(*tspec == '@') { // load from file
@@ -166,8 +163,8 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		scan_settings(a_source_addr, a_source_port, &a_ports);
-		r = scan_main(a_interface, 0) < 0 ? 1 : 0;
+		scan_settings(source_addr, source_port, &ports, max_rate);
+		r = scan_main(interface, 0) < 0 ? 1 : 0;
 	}
 
 	target_gen_fini();

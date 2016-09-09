@@ -1,7 +1,18 @@
+BUILD_TYPE ?= debug
+
 CFLAGS = -pipe -std=c11 -Wall -Wextra -Wno-sign-compare -pthread
-CFLAGS += -O1 -g
 LDFLAGS =
 LIBS = -lpcap
+
+ifeq ($(BUILD_TYPE),debug)
+CFLAGS += -O1 -g
+else
+ifeq ($(BUILD_TYPE),release)
+CFLAGS += -O3 -ggdb -DNDEBUG
+else
+$(error BUILD_TYPE must be one of release or debug)
+endif
+endif
 
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin

@@ -1,6 +1,9 @@
+#define _DEFAULT_SOURCE
 #include <stdio.h>
 #include <stdlib.h> // rand()
 #include <string.h>
+#include <unistd.h> // usleep()
+#include <stdatomic.h>
 #include <pthread.h>
 
 #include "scan.h"
@@ -12,6 +15,7 @@
 static uint8_t source_addr[16];
 static int source_port;
 static struct ports ports;
+static atomic_uint pkts_sent, pkts_recv;
 
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
@@ -21,6 +25,10 @@ static void *recv_thread(void *unused);
 #define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
 #define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
 
+#if ATOMIC_INT_LOCK_FREE != 2
+#warning Non lock-free atomic types will severely affect performance.
+#endif
+
 void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports)
 {
 	memcpy(source_addr, _source_addr, 16);
@@ -28,13 +36,13 @@ void scan_settings(const uint8_t *_source_addr, int _source_port, const struct p
 	memcpy(&ports, _ports, sizeof(struct ports));
 }
 
-
 int scan_main(const char *interface, int quiet)
 {
-	// Open raw socket
 	if(rawsock_open(interface, 2048) < 0)
 		return -1;
-	setvbuf(stdout, NULL, _IOLBF, 512);
+	setvbuf(stdout, NULL, _IONBF, 0);
+	atomic_store(&pkts_sent, 0);
+	atomic_store(&pkts_recv, 0);
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
@@ -50,11 +58,21 @@ int scan_main(const char *interface, int quiet)
 	pthread_detach(ts);
 	if(pthread_create(&tr, NULL, recv_thread, NULL) < 0)
 		goto err;
-	//pthread_detach(tr);
+	pthread_detach(tr);
 
-	// Wait for a long time
-	pthread_join(tr, NULL);
-	(void) quiet;
+	// Stats
+	while(1) {
+		if(quiet)
+			goto skip;
+
+		unsigned int cur_sent, cur_recv;
+		cur_sent = atomic_exchange(&pkts_sent, 0);
+		cur_recv = atomic_exchange(&pkts_recv, 0);
+		printf("snt:%4u rcv:%4u\r", cur_sent, cur_recv);
+
+		skip:
+		usleep(1000 * 1000);
+	}
 
 	int r = 0;
 	ret:
@@ -64,6 +82,7 @@ int scan_main(const char *interface, int quiet)
 	r = 1;
 	goto ret;
 }
+
 
 static void *send_thread(void *unused)
 {
@@ -86,14 +105,16 @@ static void *send_thread(void *unused)
 				break; // no more targets
 			rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
 			ports_iter_begin(NULL, &it);
+			continue;
 		}
 
 		// Make, checksum and send syn packet
 		make_a_syn_pkt_pls(TCP_HEADER(packet), it.val, source_port==-1?source_port_rand():source_port);
 		checksum_pkt_pls(IP_FRAME(packet), TCP_HEADER(packet));
 		rawsock_send(packet, sizeof(packet));
+		atomic_fetch_add(&pkts_sent, 1);
 	}
-	
+
 	return NULL;
 }
 
@@ -114,6 +135,7 @@ static void *recv_thread(void *unused)
 			if(ret < 0)
 				return NULL;
 		} while(ret == 0);
+		atomic_fetch_add(&pkts_recv, 1);
 		printf("<< @%lu -- %d bytes\n", ts, len);
 
 		// Decode it and output results
@@ -131,7 +153,7 @@ static void *recv_thread(void *unused)
 			ipv6_string(tmp, csrcaddr);
 			printf("%s port %d %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");
 		}
-		
+
 		continue;
 		perr:
 		printf("failed to decode packet...\n");

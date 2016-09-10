@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h> // usleep()
+#include <limits.h>
 #include <stdatomic.h>
 #include <pthread.h>
 
@@ -40,7 +41,7 @@ void scan_settings(const uint8_t *_source_addr, int _source_port, const struct p
 	memcpy(source_addr, _source_addr, 16);
 	source_port = _source_port;
 	memcpy(&ports, _ports, sizeof(struct ports));
-	max_rate = _max_rate - 1;
+	max_rate = _max_rate == -1 ? INT_MAX : _max_rate - 1;
 	outfile = _outfile;
 }
 
@@ -133,8 +134,9 @@ static void *send_thread(void *unused)
 		// Rate control
 		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
 			// FIXME: this doesn't seem like a good idea
-			while(atomic_load(&pkts_sent) != 0)
+			do
 				usleep(1000);
+			while(atomic_load(&pkts_sent) != 0);
 		}
 	}
 

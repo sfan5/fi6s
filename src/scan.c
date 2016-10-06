@@ -176,15 +176,17 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	rawsock_eth_decode(ETH_FRAME(packet), &v);
 	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
 		goto perr;
-	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, &csrcaddr, NULL);
+	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);
 	if(v != IP_TYPE_TCP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
 		goto perr;
 
 	// Output stuff
 	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
+		int v2;
 		tcp_decode(TCP_HEADER(packet), &v, NULL);
+		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
 		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
-			outdef.output_status(outfile, ts, csrcaddr, v, 0, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
+			outdef.output_status(outfile, ts, csrcaddr, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
 	}
 
 	return;

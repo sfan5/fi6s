@@ -52,12 +52,14 @@ void rawsock_ip_modify(struct frame_ip *f, int length, const uint8_t *dst)
 	memcpy(f->dest, dst, 16);
 }
 
-void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, const uint8_t **src, const uint8_t **dst)
+void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, int *ttl, const uint8_t **src, const uint8_t **dst)
 {
 	if(type)
 		*type = f->next;
 	if(length)
 		*length = be16toh(f->len);
+	if(ttl)
+		*ttl = f->ttl;
 	if(src)
 		*src = (const uint8_t*) &f->src;
 	if(dst)

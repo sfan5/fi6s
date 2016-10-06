@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
 		{"randomize-hosts", required_argument, 0, 'Z'},
 		{"echo-hosts", no_argument, 0, 'Y'},
 		{"max-rate", required_argument, 0, 'X'},
-		//{"output-format", required_argument, 0, 'W'},
+		{"output-format", required_argument, 0, 'W'},
 		{"interface", required_argument, 0, 'V'},
 		{"source-mac", required_argument, 0, 'U'}, // TODO: find out {source,router}-mac and source-ip automatically
 		{"router-mac", required_argument, 0, 'T'},
@@ -46,6 +46,7 @@ int main(int argc, char *argv[])
 	char *interface = NULL;
 	struct ports ports;
 	FILE *outfile = stdout;
+	const struct outputdef *outdef = &output_list;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:q", long_options, NULL);
@@ -71,15 +72,18 @@ int main(int argc, char *argv[])
 				max_rate = val;
 				break;
 			}
-			/*case 'W':
-				if(strcmp(optarg, "list") != 0 &&
-					strcmp(optarg, "json") != 0 &&
-					strcmp(optarg, "binary") != 0) {
+			case 'W':
+				if(strcmp(optarg, "list") == 0) {
+					outdef = &output_list;
+				} else if(strcmp(optarg, "json") == 0) {
+					outdef = &output_json;
+				} else if(strcmp(optarg, "binary") == 0) {
+					outdef = &output_binary;
+				} else {
 					printf("Argument to --output-format must be one of list, json or binary\n");
 					return 1;
 				}
-				// TODO
-				break;*/
+				break;
 			case 'V':
 				interface = optarg;
 				break;
@@ -218,7 +222,7 @@ int main(int argc, char *argv[])
 			printf("Option %s is required but was not given.\n", ra_missing(descs));
 			r = 1;
 		} else {
-			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, outfile);
+			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, outfile, outdef);
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
 	}
@@ -244,7 +248,7 @@ static void usage(void)
 	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
 	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
 	printf("  -p <port range(s)>      Only scan specified ports (\"-\" is short for 1-65535)\n");
-	//printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
+	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
 	printf("  --show-closed           Output closed ports (RSTs)\n");
 	printf("  -q                      Do not output periodic status message\n");

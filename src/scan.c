@@ -19,6 +19,7 @@ static int source_port;
 static struct ports ports;
 static int max_rate, show_closed;
 static FILE *outfile;
+static struct outputdef outdef;
 
 static atomic_uint pkts_sent, pkts_recv;
 static bool send_finished;
@@ -36,7 +37,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 #warning Non lock-free atomic types will severely affect performance.
 #endif
 
-void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate, int _show_closed, FILE *_outfile)
+void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate, int _show_closed, FILE *_outfile, const struct outputdef *_outdef)
 {
 	memcpy(source_addr, _source_addr, 16);
 	source_port = _source_port;
@@ -44,6 +45,7 @@ void scan_settings(const uint8_t *_source_addr, int _source_port, const struct p
 	max_rate = _max_rate == -1 ? INT_MAX : _max_rate - 1;
 	show_closed = _show_closed;
 	outfile = _outfile;
+	memcpy(&outdef, _outdef, sizeof(struct outputdef));
 }
 
 int scan_main(const char *interface, int quiet)
@@ -61,6 +63,9 @@ int scan_main(const char *interface, int quiet)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
 	if(rawsock_setfilter(fflags, IP_TYPE_TCP, source_addr, source_port) < 0)
 		goto err;
+
+	// Write output file header
+	outdef.begin(outfile);
 
 	// Start threads
 	pthread_t ts, tr;
@@ -87,10 +92,14 @@ int scan_main(const char *interface, int quiet)
 		usleep(STATS_INTERVAL * 1000);
 	}
 
+	// Wait for the last packets to arrive
 	fprintf(stderr, "\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
 	usleep(FINISH_WAIT_TIME * 1000 * 1000);
 	if(!quiet)
 		fprintf(stderr, "rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
+
+	// Write output file footer
+	outdef.end(outfile);
 
 	int r = 0;
 	ret:
@@ -159,7 +168,6 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	const uint8_t *csrcaddr;
 
 	atomic_fetch_add(&pkts_recv, 1);
-	(void) ts;
 	//printf("<< @%lu -- %d bytes\n", ts, len);
 
 	// Decode
@@ -175,10 +183,8 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	// Output stuff
 	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
 		tcp_decode(TCP_HEADER(packet), &v, NULL);
-		char tmp[IPV6_STRING_MAX];
-		ipv6_string(tmp, csrcaddr);
 		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
-			fprintf(outfile, "%s port %d is %s\n", tmp, v, TCP_HEADER(packet)->f_syn?"open":"closed");
+			outdef.output_status(outfile, ts, csrcaddr, v, 0, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
 	}
 
 	return;

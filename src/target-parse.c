@@ -87,7 +87,7 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 
 	const char *p = str;
 	int i = 0;
-	while(1) {
+	while(i < 8) {
 		char cur[5], *next = strchrnul(p, ':');
 		if(next - p > sizeof(cur) - 1)
 			return -1;
@@ -127,5 +127,5 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 		i++;
 	}
 
-	return 0;
+	return (i == 7) ? 0 : -1;
 }

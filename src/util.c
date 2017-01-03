@@ -62,7 +62,7 @@ int parse_ipv6(const char *str, uint8_t *dst)
 
 	const char *p = str;
 	int i = 0;
-	while(1) {
+	while(i < 8) {
 		char cur[5], *next = strchrnul(p, ':');
 		if(next - p > sizeof(cur) - 1)
 			return -1;
@@ -89,7 +89,7 @@ int parse_ipv6(const char *str, uint8_t *dst)
 		i++;
 	}
 
-	return 0;
+	return (i == 7) ? 0 : -1;
 }
 
 int parse_ports(const char *str, struct ports *dst)

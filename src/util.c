@@ -10,10 +10,24 @@
 
 void ipv6_string(char *dst, const uint8_t *addr)
 {
-	// TODO: make use of zero compression
 	int pos = 0;
+	int zc_state = 0; // 0 = pre-use, 1 = during, 2 = after ("dumb" impl. of zero compression)
 	for(int i = 0; i < 8; i++) {
-		pos += snprintf(&dst[pos], 5, "%x", addr[i*2] << 8 | addr[i*2 + 1]);
+		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
+
+		if(cur == 0 && zc_state == 0 && i != 7 && i != 0) {
+			zc_state = 1;
+			pos += snprintf(&dst[pos], 2, ":");
+		} else if(cur != 0 && zc_state == 1) {
+			zc_state = 2;
+		}
+
+		if(zc_state == 1)
+			continue;
+		if(cur == 0 && (i == 0 || i == 7)) // zeroe elements (first or last) maybe omitted
+			goto seperator;
+		pos += snprintf(&dst[pos], 5, "%x", cur);
+		seperator:
 		if(i != 7)
 			pos += snprintf(&dst[pos], 2, ":");
 	}

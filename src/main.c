@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
 			case 'X': {
 				int val = strtol_suffix(optarg);
 				if(val <= 0) {
-					printf("Argument to --max-rate must be positive\n");
+					printf("Argument to --max-rate must be a positive number\n");
 					return 1;
 				}
 				max_rate = val;
@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 			case 'R': {
 				int val = strtol_simple(optarg, 10);
 				if(val < 1 || val > 65535) {
-					printf("Argument to --source-port must be in range 1-65535\n");
+					printf("Argument to --source-port must be a number in range 1-65535\n");
 					return 1;
 				}
 				source_port = val;
@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
 			case 'Q': {
 				int val = strtol_simple(optarg, 10);
 				if(val < 1 || val > 255) {
-					printf("Argument to --ttl must be in range 1-255\n");
+					printf("Argument to --ttl must be a number in range 1-255\n");
 					return 1;
 				}
 				ttl = val;
@@ -262,7 +262,7 @@ static void usage(void)
 	printf("      This will return all hosts 2001:db8:*::1 with * in range 0000 to ffff\n");
 	printf("    2001:db8::x (wildcard nibble notation)\n");
 	printf("      The resulting netmask will be all f's except the last nibble\n");
-	printf("      This will return all hosts 2001:db8::a, 2001:db8::b ... 2001:db8::f\n");
+	printf("      This will return all hosts 2001:db8::0, 2001:db8::1 ... 2001:db8::f\n");
 	printf("  It is only possible to specify one target specification on the command line,\n");
 	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
 }

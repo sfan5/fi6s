@@ -65,7 +65,7 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_
 		return -1;
 	}
 	if(pcap_setfilter(handle, &fp) == -1) {
-		fprintf(stderr, "Faile to install filter: %s\n", pcap_geterr(handle));
+		fprintf(stderr, "Failed to install filter: %s\n", pcap_geterr(handle));
 		return -1;
 	}
 

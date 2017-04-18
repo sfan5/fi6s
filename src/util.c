@@ -168,7 +168,8 @@ int parse_ports(const char *str, struct ports *dst)
 
 void ports_iter_begin(const struct ports *p, struct ports_iter *it)
 {
-	it->__p = p;
+	if(p)
+		it->__p = p;
 	it->__ri = -1;
 }
 

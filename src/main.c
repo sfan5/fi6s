@@ -5,6 +5,7 @@
 #include <unistd.h> // getpid()
 #include <time.h> // time()
 #include <getopt.h>
+#include <netinet/in.h> // struct sockaddr_in6, AF_INET6
 
 #include "util.h"
 #include "target.h"
@@ -22,7 +23,7 @@ int main(int argc, char *argv[])
 		{"max-rate", required_argument, 0, 'X'},
 		{"output-format", required_argument, 0, 'W'},
 		{"interface", required_argument, 0, 'V'},
-		{"source-mac", required_argument, 0, 'U'}, // TODO: find out {source,router}-mac and source-ip automatically
+		{"source-mac", required_argument, 0, 'U'},
 		{"router-mac", required_argument, 0, 'T'},
 		{"source-ip", required_argument, 0, 'S'},
 		{"source-port", required_argument, 0, 'R'},
@@ -157,6 +158,24 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	// attempt to auto-detect a few arguments
+	if(!interface && !echo_hosts) {
+		if(rawsock_getdev(&interface) < 0)
+			return -1;
+		fprintf(stderr, "Using default interface '%s'\n", interface);
+	}
+	if(is_allFF(source_mac, 6))
+		rawsock_getmac(interface, source_mac);
+	if(is_allFF(router_mac, 6))
+		rawsock_getgw(interface, router_mac);
+	if(is_allFF(source_addr, 16)) {
+		struct sockaddr_in6 globaddr;
+		memset(&globaddr, 0, sizeof(struct sockaddr_in6));
+		globaddr.sin6_family = AF_INET6;
+		globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
+		rawsock_getsrcip(&globaddr, source_addr);
+	}
+
 	srand(time(NULL) ^ getpid());
 	target_gen_init();
 	target_gen_set_randomized(randomize_hosts);
@@ -213,18 +232,7 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		// Attempt to auto-detect a few arguments
-		if(!interface) {
-			if(rawsock_getdev(&interface) < 0)
-				return -1;
-			fprintf(stderr, "Using default interface '%s'\n", interface);
-		}
-		if(is_allFF(source_mac, 6))
-			rawsock_getmac(interface, source_mac);
-		if(is_allFF(router_mac, 6))
-			rawsock_getgw(interface, router_mac);
-
-		// complain about missing ones
+		// complain about missing args
 		const char* missing = NULL;
 		if(is_allFF(source_mac, 6))
 			missing = "--source-mac";

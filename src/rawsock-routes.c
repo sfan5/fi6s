@@ -82,6 +82,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 			{
 				memcpy(mac, &addr[8], 3);
 				memcpy(&mac[3], &addr[13], 3);
+				*mac ^= 0x02; // ???
 				success = 1;
 				continue; // a "break" might cause us to miss an RTA_OIF leading to incorrect data
 			}
@@ -110,6 +111,29 @@ int rawsock_getmac(const char *dev, uint8_t *mac)
 	int rd = fread(buf, 1, sizeof(buf), f);
 	fclose(f);
 	return rd > 0 ? parse_mac(buf, mac) : -1;
+}
+
+int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip)
+{
+	int sock;
+	sock = socket(AF_INET6, SOCK_DGRAM, 0);
+	if(sock == -1)
+		return -1;
+	if(connect(sock, (struct sockaddr*) dest, sizeof(struct sockaddr_in6)) == -1) {
+		close(sock);
+		return -1;
+	}
+
+	struct sockaddr_in6 tmp;
+	socklen_t tmplen = sizeof(struct sockaddr_in6);
+	int ret = 0;
+	if(getsockname(sock, (struct sockaddr*) &tmp, &tmplen) == -1)
+		ret = -1;
+	else
+		memcpy(ip, tmp.sin6_addr.s6_addr, 16);
+
+	close(sock);
+	return ret;
 }
 
 static int netlink_read(int sock, char *buf, int bufsz)

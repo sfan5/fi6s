@@ -2,6 +2,7 @@
 #define _RAWSOCK_H
 
 #include <stdint.h>
+#include <netinet/in.h>
 
 #define FRAME_ETH_SIZE 14
 #define FRAME_IP_SIZE 40
@@ -57,5 +58,6 @@ void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, int *tt
 int rawsock_getdev(char **dev);
 int rawsock_getmac(const char *dev, uint8_t *mac); // MAC of the adapter/intf
 int rawsock_getgw(const char *dev, uint8_t *mac); // MAC of the default router/gateway
+int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip);
 
 #endif // _RAWSOCK_H

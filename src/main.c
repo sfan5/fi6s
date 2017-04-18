@@ -213,6 +213,18 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
+		// Attempt to auto-detect a few arguments
+		if(!interface) {
+			if(rawsock_getdev(&interface) < 0)
+				return -1;
+			fprintf(stderr, "Using default interface '%s'\n", interface);
+		}
+		if(is_allFF(source_mac, 6))
+			rawsock_getmac(interface, source_mac);
+		if(is_allFF(router_mac, 6))
+			rawsock_getgw(interface, router_mac);
+
+		// complain about missing ones
 		const char* missing = NULL;
 		if(is_allFF(source_mac, 6))
 			missing = "--source-mac";
@@ -228,11 +240,6 @@ int main(int argc, char *argv[])
 			r = 1;
 		} else {
 			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, outfile, outdef);
-			if(!interface) {
-				if(rawsock_getdev(&interface) < 0)
-					return -1;
-				fprintf(stderr, "Using default interface '%s'\n", interface);
-			}
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
 	}

@@ -69,7 +69,7 @@ int parse_ipv6(const char *str, uint8_t *dst)
 		strncpy_term(cur, p, next - p);
 
 		if((i == 0 || i == 7) && strlen(cur) == 0)
-			strncpy(cur, "0", 3); // zero compression can't be used on first or last element
+			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
 		if(strlen(cur) == 0) {
 			// zero compression: an empty field fills up the missing zeroes
 			i += 8 - given;

@@ -54,4 +54,7 @@ void rawsock_ip_prepare(struct frame_ip *f, int type);
 void rawsock_ip_modify(struct frame_ip *f, int length, const uint8_t *dst);
 void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, int *ttl, const uint8_t **src, const uint8_t **dst);
 
+int rawsock_getdev(char **dev);
+int rawsock_getgw(const char *dev, uint8_t *addr);
+
 #endif // _RAWSOCK_H

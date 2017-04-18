@@ -92,13 +92,23 @@ int parse_ipv6(const char *str, uint8_t *dst)
 	return (i == 7) ? 0 : -1;
 }
 
-int parse_ports(const char *str, struct ports *dst)
+void init_ports(struct ports *p)
 {
 	for(int i = 0; i < PORTS_MAX_RANGES; i++) {
 		// init each range as invalid
-		dst->r[i].begin = 1;
-		dst->r[i].end = 0;
+		p->r[i].begin = 1;
+		p->r[i].end = 0;
 	}
+}
+
+bool validate_ports(const struct ports *p)
+{
+	return p->r[0].end >= p->r[0].begin;
+}
+
+int parse_ports(const char *str, struct ports *dst)
+{
+	init_ports(dst);
 	if(strcmp(str, "-") == 0) { // all of them
 		dst->r[0].begin = 1;
 		dst->r[0].end = 65535;
@@ -158,8 +168,7 @@ int parse_ports(const char *str, struct ports *dst)
 
 void ports_iter_begin(const struct ports *p, struct ports_iter *it)
 {
-	if(p)
-		it->__p = p;
+	it->__p = p;
 	it->__ri = -1;
 }
 

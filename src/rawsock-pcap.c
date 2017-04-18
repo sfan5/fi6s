@@ -18,14 +18,6 @@ int rawsock_open(const char *dev, int buffersize)
 {
 	char errbuf[PCAP_ERRBUF_SIZE];
 
-	if(!dev) {
-		dev = pcap_lookupdev(errbuf);
-		if(!dev) {
-			fprintf(stderr, "Couldn't determine default interface: %s\n", errbuf);
-			return -1;
-		}
-		fprintf(stderr, "Using default interface '%s'\n", dev);
-	}
 	handle = pcap_open_live(dev, buffersize, 0, 1000, errbuf);
 	if(!handle) {
 		fprintf(stderr, "Couldn't open pcap handle: %s\n", errbuf);

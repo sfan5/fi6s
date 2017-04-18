@@ -11,12 +11,8 @@
 #include "rawsock.h"
 #include "scan.h"
 
-static uint64_t ra_bitmap = 0;
-
 static void usage(void);
-static void ra_boop(int idx); // TODO: just fix arg parsing instead of using these
-static int ra_check(int howmany);
-static const char *ra_missing(const char **descs);
+static bool is_allFF(const uint8_t *buf, int len);
 
 int main(int argc, char *argv[])
 {
@@ -48,6 +44,10 @@ int main(int argc, char *argv[])
 	FILE *outfile = stdout;
 	const struct outputdef *outdef = &output_list;
 
+	memset(source_mac, 0xff, 6);
+	memset(router_mac, 0xff, 6);
+	memset(source_addr, 0xff, 16);
+	init_ports(&ports);
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:q", long_options, NULL);
 		if(c == -1)
@@ -92,21 +92,18 @@ int main(int argc, char *argv[])
 					printf("Argument to --source-mac is not a valid MAC address\n");
 					return 1;
 				}
-				ra_boop(0);
 				break;
 			case 'T':
 				if(parse_mac(optarg, router_mac) < 0) {
 					printf("Argument to --router-mac is not a valid MAC address\n");
 					return 1;
 				}
-				ra_boop(1);
 				break;
 			case 'S':
 				if(parse_ipv6(optarg, source_addr) < 0) {
 					printf("Argument to --source-ip is not a valid IPv6 address\n");
 					return 1;
 				}
-				ra_boop(2);
 				break;
 			case 'R': {
 				int val = strtol_simple(optarg, 10);
@@ -138,7 +135,6 @@ int main(int argc, char *argv[])
 					printf("Argument to -p must be valid port range(s)\n");
 					return 1;
 				}
-				ra_boop(3);
 				break;
 			case 'o': {
 				FILE *f = fopen(optarg, "wb");
@@ -217,12 +213,26 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		if(!ra_check(4)) {
-			const char *descs[] = {"--source-mac", "--router-mac", "--source-ip", "-p"};
-			printf("Option %s is required but was not given.\n", ra_missing(descs));
+		const char* missing = NULL;
+		if(is_allFF(source_mac, 6))
+			missing = "--source-mac";
+		else if(is_allFF(router_mac, 6))
+			missing = "--router-mac";
+		else if(is_allFF(source_addr, 16))
+			missing = "--source-ip";
+		else if(!validate_ports(&ports))
+			missing = "-p";
+
+		if(missing) {
+			printf("Option %s is required but was not given.\n", missing);
 			r = 1;
 		} else {
 			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, outfile, outdef);
+			if(!interface) {
+				if(rawsock_getdev(&interface) < 0)
+					return -1;
+				fprintf(stderr, "Using default interface '%s'\n", interface);
+			}
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
 	}
@@ -267,27 +277,11 @@ static void usage(void)
 	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
 }
 
-static void ra_boop(int idx)
+static bool is_allFF(const uint8_t *buf, int len)
 {
-	ra_bitmap |= (1 << idx);
-}
-
-static int ra_check(int howmany)
-{
-	for(int i = 0; i < howmany; i++) {
-		if(ra_bitmap & (1 << i))
-			continue;
-		return 0;
-	}
-	return 1;
-}
-
-static const char *ra_missing(const char **descs)
-{
-	for(int i = 0;; i++) {
-		if(ra_bitmap & (1 << i))
-			continue;
-		return descs[i];
-	}
-	return NULL;
+	while(len--) {
+		if(*(buf++) != 0xff)
+			return false;
+	};
+	return true;
 }

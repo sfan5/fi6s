@@ -16,15 +16,15 @@ On Ubuntu 16.04 (xenial) it looks like this:
 	$ make BUILD_TYPE=release
 
 The scanner executable will be ready in at `./fi6s`.
-Note that support for non-Linux OSs is not a priority,
-which means that it might not work on *BSD or Windows at all.
+Note that fi6s is developed solely on Linux, thus
+it might not work on non-Linux OSs (*BSD, macOS or Windows) at all.
 
 ## Usage
 
-Theoretically usage is pretty easy, however right now you
-need to specify adapter MACs and source IP manually.
+Usage is pretty easy, fi6s will try to auto-detect the
+dirty technical details (source/dest MAC, source IP).
 
-	# ./fi6s --source-mac 11:22:33:44:55:66 --router-mac 66:55:44:33:22:11 --source-ip 2001:db8::1 -p 80,8000-8100 2001:db8::/120
+	# ./fi6s -p 80,8000-8100 2001:db8::/120
 
 This example will:
 * scan the 2001:db8::/120 subnet (256 addresses in total)

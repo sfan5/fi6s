@@ -13,6 +13,7 @@
 #include "util.h"
 #include "rawsock.h"
 #include "tcp.h"
+#include "banner.h"
 
 static uint8_t source_addr[16];
 static int source_port;
@@ -30,9 +31,8 @@ static void *send_thread(void *unused);
 static void *recv_thread(void *unused);
 static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 
-#define RESPONDER_MAX_DATA 256
 static struct {
-	uint8_t _Alignas(long int) buffer[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + RESPONDER_MAX_DATA];
+	uint8_t _Alignas(long int) buffer[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
 } responder;
 static void responder_init();
 static void responder_process(uint64_t ts, int len, const uint8_t *rpacket);
@@ -233,20 +233,13 @@ static void responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 	if(TCP_HEADER(rpacket)->f_psh) {
 		// we got a banner!
 		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
-		const int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+		unsigned int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+		banner_postprocess(rport, (char*) DATA(rpacket), &plen);
 		outdef.output_banner(outfile, ts, rsrcaddr, rport, (char*) DATA(rpacket), plen);
 
-		// send ack+rst to terminate the connection
+		// terminate connection
 		rseqnum += plen;
-
-		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-		tcp_make_ack(TCP_HEADER(spacket), acknum, rseqnum);
-		TCP_HEADER(spacket)->f_rst = 1;
-		//printf("> ack+rst seq=%08x ack=%08x\n", acknum, rseqnum);
-		tcp_modify(TCP_HEADER(spacket), source_port, rport);
-		tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
-
-		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+		goto send_ack_rst;
 	} else if(TCP_HEADER(rpacket)->f_ack) {
 		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
 		//printf("< seqnum = %08x acked -> %08x\n", rseqnum, acknum);
@@ -254,17 +247,38 @@ static void responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		if(TCP_HEADER(rpacket)->f_syn) {
 			if(acknum != FIRST_SEQNUM + 1)
 				return;
+			rseqnum += 1; // syn-ack increases seqnum by one
 
-			// send ack
-			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-			tcp_make_ack(TCP_HEADER(spacket), FIRST_SEQNUM + 1, rseqnum);
-			//printf("> ack seq=%08x ack=%08x\n", FIRST_SEQNUM + 1, rseqnum);
-			tcp_modify(TCP_HEADER(spacket), source_port, rport);
-			tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
+			unsigned int plen;
+			const char *payload = banner_get_query(rport, &plen);
+			if(payload) {
+				// send ack(+psh) with banner query
+				rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE + plen, rsrcaddr);
+				tcp_make_ack(TCP_HEADER(spacket), FIRST_SEQNUM + 1, rseqnum);
+				TCP_HEADER(spacket)->f_psh = (plen > 0);
+				//printf("> ack%s seq=%08x ack=%08x\n", TCP_HEADER(spacket)->f_psh?"+psh":"", FIRST_SEQNUM + 1, rseqnum);
+				tcp_modify(TCP_HEADER(spacket), source_port, rport);
+				memcpy(DATA(spacket), payload, plen);
+				tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), plen);
 
-			rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+				rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + plen);
+			} else {
+				// terminate connection
+				goto send_ack_rst;
+			}
 		}
 	}
+	return;
+
+	send_ack_rst:
+	rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
+	tcp_make_ack(TCP_HEADER(spacket), acknum, rseqnum);
+	TCP_HEADER(spacket)->f_rst = 1;
+	//printf("> ack+rst seq=%08x ack=%08x\n", acknum, rseqnum);
+	tcp_modify(TCP_HEADER(spacket), source_port, rport);
+	tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
+
+	rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
 }
 
 static inline int source_port_rand(void)

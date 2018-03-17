@@ -17,45 +17,57 @@
 static uint8_t source_addr[16];
 static int source_port;
 static struct ports ports;
-static int max_rate, show_closed;
+static int max_rate, show_closed, banners;
 static FILE *outfile;
 static struct outputdef outdef;
 
 static atomic_uint pkts_sent, pkts_recv;
 static bool send_finished;
 
+#define FIRST_SEQNUM 0xf0000000
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
 static void *recv_thread(void *unused);
 static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 
+#define RESPONDER_MAX_DATA 256
+static struct {
+	uint8_t _Alignas(long int) buffer[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + RESPONDER_MAX_DATA];
+} responder;
+static void responder_init();
+static void responder_process(uint64_t ts, int len, const uint8_t *rpacket);
+
 #define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )
 #define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
 #define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
+#define DATA(buf) ( (uint8_t*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE] )
 
 #if ATOMIC_INT_LOCK_FREE != 2
 #warning Non lock-free atomic types will severely affect performance.
 #endif
 
-void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate, int _show_closed, FILE *_outfile, const struct outputdef *_outdef)
+void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate, int _show_closed, int _banners, FILE *_outfile, const struct outputdef *_outdef)
 {
 	memcpy(source_addr, _source_addr, 16);
 	source_port = _source_port;
 	memcpy(&ports, _ports, sizeof(struct ports));
 	max_rate = _max_rate == -1 ? INT_MAX : _max_rate - 1;
 	show_closed = _show_closed;
+	banners = _banners;
 	outfile = _outfile;
 	memcpy(&outdef, _outdef, sizeof(struct outputdef));
 }
 
 int scan_main(const char *interface, int quiet)
 {
-	if(rawsock_open(interface, 2048) < 0)
+	if(rawsock_open(interface, 65536) < 0)
 		return -1;
 	setvbuf(outfile, NULL, _IOLBF, 512);
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	send_finished = false;
+	if(banners)
+		responder_init();
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
@@ -123,7 +135,7 @@ static void *send_thread(void *unused)
 		return NULL;
 	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
 	tcp_prepare(TCP_HEADER(packet));
-	tcp_synpkt(TCP_HEADER(packet));
+	tcp_make_syn(TCP_HEADER(packet), FIRST_SEQNUM);
 	ports_iter_begin(&ports, &it);
 
 	while(1) {
@@ -137,7 +149,7 @@ static void *send_thread(void *unused)
 		}
 
 		tcp_modify(TCP_HEADER(packet), source_port==-1?source_port_rand():source_port, it.val);
-		tcp_checksum(IP_FRAME(packet), TCP_HEADER(packet));
+		tcp_checksum_nodata(IP_FRAME(packet), TCP_HEADER(packet));
 		rawsock_send(packet, sizeof(packet));
 
 		// Rate control
@@ -187,6 +199,9 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
 			outdef.output_status(outfile, ts, csrcaddr, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
 	}
+	// Pass packet to responder
+	if(banners)
+		responder_process(ts, len, packet);
 
 	return;
 	perr:
@@ -194,6 +209,62 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	fprintf(stderr, "Failed to decode packet of length %d\n", len);
 #endif
 	;
+}
+
+static void responder_init()
+{
+	uint8_t *spacket = responder.buffer;
+
+	rawsock_eth_prepare(ETH_FRAME(spacket), ETH_TYPE_IPV6);
+	rawsock_ip_prepare(IP_FRAME(spacket), IP_TYPE_TCP);
+	tcp_prepare(TCP_HEADER(spacket));
+}
+
+static void responder_process(uint64_t ts, int len, const uint8_t *rpacket)
+{
+	uint8_t *spacket = responder.buffer;
+	const uint8_t *rsrcaddr;
+	int rport;
+	uint32_t rseqnum, acknum;
+
+	rawsock_ip_decode(IP_FRAME(rpacket), NULL, NULL, NULL, &rsrcaddr, NULL);
+	tcp_decode(TCP_HEADER(rpacket), &rport, NULL);
+
+	if(TCP_HEADER(rpacket)->f_psh) {
+		// we got a banner!
+		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
+		const int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+		outdef.output_banner(outfile, ts, rsrcaddr, rport, (char*) DATA(rpacket), plen);
+
+		// send ack+rst to terminate the connection
+		rseqnum += plen;
+
+		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
+		tcp_make_ack(TCP_HEADER(spacket), acknum, rseqnum);
+		TCP_HEADER(spacket)->f_rst = 1;
+		//printf("> ack+rst seq=%08x ack=%08x\n", acknum, rseqnum);
+		tcp_modify(TCP_HEADER(spacket), source_port, rport);
+		tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
+
+		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+	} else if(TCP_HEADER(rpacket)->f_ack) {
+		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
+		//printf("< seqnum = %08x acked -> %08x\n", rseqnum, acknum);
+
+		if(TCP_HEADER(rpacket)->f_syn) {
+			if(acknum != FIRST_SEQNUM + 1)
+				return;
+
+			// send ack
+			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
+			tcp_make_ack(TCP_HEADER(spacket), FIRST_SEQNUM + 1, rseqnum);
+			//printf("> ack seq=%08x ack=%08x\n", FIRST_SEQNUM + 1, rseqnum);
+			tcp_modify(TCP_HEADER(spacket), source_port, rport);
+			tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
+
+			rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+		}
+	}
 }
 
 static inline int source_port_rand(void)

@@ -29,6 +29,7 @@ int main(int argc, char *argv[])
 		{"source-port", required_argument, 0, 'R'},
 		{"ttl", required_argument, 0, 'Q'},
 		{"show-closed", no_argument, 0, 'P'},
+		{"banners", no_argument, 0, 'O'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
@@ -38,7 +39,7 @@ int main(int argc, char *argv[])
 	int echo_hosts = 0, randomize_hosts = 1,
 		ttl = 64, max_rate = -1,
 		source_port = -1, quiet = 0,
-		show_closed = 0;
+		show_closed = 0, banners = 0;
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
 	char *interface = NULL;
 	struct ports ports;
@@ -126,6 +127,9 @@ int main(int argc, char *argv[])
 			}
 			case 'P':
 				show_closed = 1;
+				break;
+			case 'O':
+				banners = 1;
 				break;
 
 			case 'h':
@@ -247,7 +251,7 @@ int main(int argc, char *argv[])
 			printf("Option %s is required but was not given.\n", missing);
 			r = 1;
 		} else {
-			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, outfile, outdef);
+			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, banners, outfile, outdef);
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
 	}
@@ -276,6 +280,7 @@ static void usage(void)
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
 	printf("  --show-closed           Output closed ports (RSTs)\n");
+	printf("  --banners               Capture banners\n");
 	printf("  -q                      Do not output periodic status message\n");
 	printf("Target specification:\n");
 	printf("  A target specification is basically just a fancy netmask.\n");

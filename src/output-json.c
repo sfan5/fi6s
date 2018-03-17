@@ -20,6 +20,11 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t po
 	);
 }
 
+static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t port, const char *banner, unsigned int bannerlen)
+{
+	// TODO
+}
+
 static void end(FILE *f)
 {
 	fprintf(f, "{finished: 1}\n");
@@ -28,5 +33,6 @@ static void end(FILE *f)
 const struct outputdef output_json = {
 	&begin,
 	&output_status,
+	&output_banner,
 	&end,
 };

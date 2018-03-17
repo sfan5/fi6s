@@ -29,9 +29,12 @@ struct frame_ip;
 
 void tcp_prepare(struct tcp_header *pkt);
 void tcp_modify(struct tcp_header *pkt, int srcport, int dstport);
-void tcp_synpkt(struct tcp_header *pkt);
-void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt);
+void tcp_make_syn(struct tcp_header *pkt, uint32_t seqnum);
+void tcp_make_ack(struct tcp_header *pkt, uint32_t seqnum, uint32_t acknum);
+void tcp_checksum_nodata(const struct frame_ip *ipf, struct tcp_header *pkt);
+void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt, uint16_t dlen);
 
 void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport);
+void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknum);
 
 #endif // _TCP_H

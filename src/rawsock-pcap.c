@@ -18,7 +18,7 @@ int rawsock_open(const char *dev, int buffersize)
 {
 	char errbuf[PCAP_ERRBUF_SIZE];
 
-	handle = pcap_open_live(dev, buffersize, 0, 1000, errbuf);
+	handle = pcap_open_live(dev, buffersize, 0, 100/*1000*/, errbuf);
 	if(!handle) {
 		fprintf(stderr, "Couldn't open pcap handle: %s\n", errbuf);
 		return -1;

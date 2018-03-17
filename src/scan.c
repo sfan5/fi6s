@@ -68,13 +68,13 @@ int scan_main(const char *interface, int quiet)
 	outdef.begin(outfile);
 
 	// Start threads
-	pthread_t ts, tr;
-	if(pthread_create(&ts, NULL, send_thread, NULL) < 0)
-		goto err;
-	pthread_detach(ts);
+	pthread_t tr, ts;
 	if(pthread_create(&tr, NULL, recv_thread, NULL) < 0)
 		goto err;
 	pthread_detach(tr);
+	if(pthread_create(&ts, NULL, send_thread, NULL) < 0)
+		goto err;
+	pthread_detach(ts);
 
 	// Stats & progress watching
 	while(1) {
@@ -84,10 +84,8 @@ int scan_main(const char *interface, int quiet)
 		float progress = target_gen_progress();
 		if(!quiet)
 			fprintf(stderr, "snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
-		if(send_finished) {
-			rawsock_breakloop();
+		if(send_finished)
 			break;
-		}
 
 		usleep(STATS_INTERVAL * 1000);
 	}
@@ -95,6 +93,7 @@ int scan_main(const char *interface, int quiet)
 	// Wait for the last packets to arrive
 	fprintf(stderr, "\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
 	usleep(FINISH_WAIT_TIME * 1000 * 1000);
+	rawsock_breakloop();
 	if(!quiet)
 		fprintf(stderr, "rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
 

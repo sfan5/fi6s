@@ -36,3 +36,13 @@ if you aren't sure what's about to happen invoke fi6s with `--echo-hosts`
 and it will print every host that will be scanned.
 
 For advanced features please consult the output of `./fi6s -h`.
+
+## Grabbing banners
+
+Since fi6s has its own TCP stack, the OS stack needs to disabled to avoid interference
+with banner grabbing (RST packets).
+This is most easily done using ip6tables and a constant `--source-port`.
+Banner grabbing is then enabled by passing `--banners`:
+
+	# ip6tables -A INPUT -p tcp -m tcp --dport 12345 -j DROP
+	# ./fi6s -p 22 --banners --source-port 12345 2001:db8::/120

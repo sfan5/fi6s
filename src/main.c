@@ -164,21 +164,23 @@ int main(int argc, char *argv[])
 	}
 
 	// attempt to auto-detect a few arguments
-	if(!interface && !echo_hosts) {
-		if(rawsock_getdev(&interface) < 0)
-			return -1;
-		fprintf(stderr, "Using default interface '%s'\n", interface);
-	}
-	if(is_allFF(source_mac, 6))
-		rawsock_getmac(interface, source_mac);
-	if(is_allFF(router_mac, 6))
-		rawsock_getgw(interface, router_mac);
-	if(is_allFF(source_addr, 16)) {
-		struct sockaddr_in6 globaddr;
-		memset(&globaddr, 0, sizeof(struct sockaddr_in6));
-		globaddr.sin6_family = AF_INET6;
-		globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
-		rawsock_getsrcip(&globaddr, source_addr);
+	if(!echo_hosts) {
+		if(!interface) {
+			if(rawsock_getdev(&interface) < 0)
+				return -1;
+			fprintf(stderr, "Using default interface '%s'\n", interface);
+		}
+		if(is_allFF(source_mac, 6))
+			rawsock_getmac(interface, source_mac);
+		if(is_allFF(router_mac, 6))
+			rawsock_getgw(interface, router_mac);
+		if(is_allFF(source_addr, 16)) {
+			struct sockaddr_in6 globaddr;
+			memset(&globaddr, 0, sizeof(struct sockaddr_in6));
+			globaddr.sin6_family = AF_INET6;
+			globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
+			rawsock_getsrcip(&globaddr, source_addr);
+		}
 	}
 
 	srand(time(NULL) ^ getpid());

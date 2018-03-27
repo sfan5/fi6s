@@ -14,6 +14,7 @@
 
 static void usage(void);
 static bool is_allFF(const uint8_t *buf, int len);
+static void trim(char *buf, const char *trimchars);
 
 int main(int argc, char *argv[])
 {
@@ -196,13 +197,11 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		while(fgets(buf, sizeof(buf), f) != NULL) {
-			char *ptr;
 			struct targetspec t;
 
-			ptr = buf + strlen(buf) - 1;
-			while(ptr > buf && (*ptr == '\r' || *ptr == '\n'))
-				ptr--;
-			*(ptr + 1) = '\0';
+			trim(buf, " \t\r\n");
+			if(buf[0] == '#' || buf[0] == '\0')
+				continue; // skip comments and empty lines
 
 			if(target_parse(buf, &t) < 0) {
 				printf("Failed to parse target spec \"%s\".\n", buf);
@@ -304,4 +303,17 @@ static bool is_allFF(const uint8_t *buf, int len)
 			return false;
 	};
 	return true;
+}
+
+static void trim(char *buf, const char *trimchars)
+{
+	// front
+	while(*buf && strchr(trimchars, *buf))
+		memmove(buf, &buf[1], strlen(buf));
+
+	// back
+	char *ptr = buf + strlen(buf) - 1;
+	while(ptr > buf && strchr(trimchars, *ptr))
+		ptr--;
+	*(ptr + 1) = '\0';
 }

@@ -182,9 +182,15 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	//printf("<< @%lu -- %d bytes\n", ts, len);
 
 	// Decode
-	if(len < FRAME_ETH_SIZE)
-		goto perr;
-	rawsock_eth_decode(ETH_FRAME(packet), &v);
+	if(rawsock_has_ethernet_headers()) {
+		if(len < FRAME_ETH_SIZE)
+			goto perr;
+		rawsock_eth_decode(ETH_FRAME(packet), &v);
+	} else {
+		v = ETH_TYPE_IPV6;
+		packet -= FRAME_ETH_SIZE; // FIXME: convenient but horrible hack
+		len += FRAME_ETH_SIZE;
+	}
 	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
 		goto perr;
 	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);

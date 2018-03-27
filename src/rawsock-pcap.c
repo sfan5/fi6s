@@ -11,6 +11,7 @@ typedef unsigned int u_int;
 #include "util.h"
 
 static pcap_t *handle;
+static int linktype;
 
 static void callback_fwd(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
@@ -23,8 +24,10 @@ int rawsock_open(const char *dev, int buffersize)
 		fprintf(stderr, "Couldn't open pcap handle: %s\n", errbuf);
 		return -1;
 	}
-	if(pcap_datalink(handle) != DLT_EN10MB) {
-		fprintf(stderr, "Selected interface does not provide Ethernet headers.\n");
+	linktype = pcap_datalink(handle);
+	if(linktype != DLT_EN10MB && linktype != 12 /* what? */) {
+		printf("linktype = %d\n", linktype);
+		fprintf(stderr, "Selected interface does not provide Ethernet or IP headers.\n");
 		goto err;
 	}
 	pcap_setdirection(handle, PCAP_D_IN);
@@ -33,6 +36,11 @@ int rawsock_open(const char *dev, int buffersize)
 	err:
 	pcap_close(handle);
 	return -1;
+}
+
+int rawsock_has_ethernet_headers(void)
+{
+	return linktype == DLT_EN10MB;
 }
 
 #define snprintf_append(buffer, format, ...) do { \
@@ -81,7 +89,7 @@ int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt)
 		return -1;
 	else if(r == 0)
 		return 0;
-	if(hdr->caplen < hdr->len)
+	if(hdr->caplen < hdr->len) // truncated packet
 		return -1;
 	*ts = hdr->ts.tv_sec;
 	*length = hdr->caplen;
@@ -103,6 +111,15 @@ void rawsock_breakloop(void)
 
 int rawsock_send(const uint8_t *pkt, int size)
 {
+	if(!rawsock_has_ethernet_headers()) {
+#ifndef NDEBUG
+		if (size <= FRAME_ETH_SIZE)
+			return -1;
+#endif
+		pkt = &pkt[FRAME_ETH_SIZE];
+		size -= FRAME_ETH_SIZE;
+	}
+
 	int r = pcap_sendpacket(handle, pkt, size);
 #ifndef NDEBUG
 	if(r == -1)
@@ -118,7 +135,7 @@ void rawsock_close(void)
 
 static void callback_fwd(u_char *user, const struct pcap_pkthdr *hdr, const u_char *pkt)
 {
-	if(hdr->caplen < hdr->len)
+	if(hdr->caplen < hdr->len) // truncated
 		return;
 	((rawsock_callback) user)(hdr->ts.tv_sec, hdr->caplen, pkt);
 }

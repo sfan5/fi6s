@@ -90,7 +90,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 			char buf2[IPV6_STRING_MAX];
 			ipv6_string(buf2, addr);
 			fprintf(stderr, "Couldn't auto-detect gateway mac as its "
-				"address (%s) is not a link-local one.", buf2);
+				"address (%s) is not a link-local one.\n", buf2);
 		}
 	}
 

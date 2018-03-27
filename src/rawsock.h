@@ -39,8 +39,9 @@ struct frame_ip {
 typedef void (*rawsock_callback)(uint64_t,int,const uint8_t*);
 
 int rawsock_open(const char *dev, int buffersize);
+int rawsock_has_ethernet_headers(void);
 int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_t dstport);
-int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt); // don't actually use this one
+int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt); // testing purposes
 int rawsock_loop(rawsock_callback func);
 void rawsock_breakloop(void);
 int rawsock_send(const uint8_t *pkt, int size);

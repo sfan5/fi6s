@@ -13,7 +13,7 @@ struct targetstate {
 static void shuffle(void *buf, int stride, int n);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
-static void progress_single(const struct targetstate *t, uint32_t *total, uint32_t *rem);
+static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done);
 
 
 static int randomize = 1;
@@ -47,17 +47,17 @@ void target_gen_set_randomized(int v)
 float target_gen_progress(void)
 {
 	// What we do here is beyond horrible:
-	// We go through the bitmasks and assemble the number of hosts total and remaining
-	// Those are added together and used to calculate the percentage (don't forget the cache though!)
-	// This obviously fails horribly if you intend to scan more than 2**32 hosts
-	uint32_t total = 0, rem = 0;
+	// We go through the bitmasks and assemble the number of hosts total and done
+	// Those are added together and used to calculate the percentage (don't forget the cache though)
+	// It only took two^Wthree tries to get this right!
+	uint64_t total = 0, done = 0;
 	for(int i = 0; i < MAX_TARGETS; i++) {
 		if(!targets[i].used)
 			continue;
-		progress_single(&targets[i], &total, &rem);
+		progress_single(&targets[i], &total, &done);
 	}
-	rem += cache_size - cache_i;
-	return (total == 0 || rem == 0) ? 1.0 : ( (total - rem) / (float) total );
+	done -= cache_size - cache_i;
+	return (total == 0 || done == 0) ? 1.0 : ( done / (float) total );
 }
 
 void target_gen_fini(void)
@@ -160,19 +160,22 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 		t->done = 1;
 }
 
-static void progress_single(const struct targetstate *t, uint32_t *total, uint32_t *rem)
+static inline void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)
 {
 	int bits = 0;
-	uint32_t _rem = 0;
-	for(int i = 15; i >= 0; i--) {
-		for(int j = 1; j != (1 << 8); j <<= 1) {
+	uint64_t _done = 0;
+	for(int i = 0; i < 16; i++) {
+		for(int j = (1 << 7); j != 0; j >>= 1) {
 			if(t->spec.mask[i] & j)
 				continue;
 			bits++;
-			_rem |= !!(t->cur[i] & j);
-			_rem <<= 1;
+			_done <<= 1;
+			_done |= !!(t->cur[i] & j);
 		}
 	}
-	*total += 1 << bits;
-	*rem += _rem;
+	*total += (1 << bits) - 1;
+	if(t->done) // _done == 0 but the target is actually complete
+		*done += (1 << bits) - 1;
+	else
+		*done += _done;
 }

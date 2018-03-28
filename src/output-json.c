@@ -38,7 +38,7 @@ static void json_escape(char *out, unsigned int outsize, const char* buf, unsign
 static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t port, const char *banner, unsigned int bannerlen)
 {
 	// {"ip": "<ip>", "timestamp": <ts>, "ports": [{"port": <port>, "proto": "tcp", "service": {"name": "http", "banner": "......"}}]},
-	char addrstr[IPV6_STRING_MAX], buffer[4096];
+	char addrstr[IPV6_STRING_MAX], buffer[16384];
 
 	// buffer output here
 	*buffer = '\0';

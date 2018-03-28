@@ -28,7 +28,7 @@ static void escaped(char *out, unsigned int outsize, const char* buf, unsigned i
 	for(unsigned int i = 0; i < len; i++) {
 		int c = buf[i];
 		char tmp[5] = {0};
-		if(c == '\0' || c > 127 || !isprint(c) || strchr("\r\n\"\\", c) != NULL)
+		if(c > 127 || !isprint(c) || strchr("\r\n\"\\", c) != NULL)
 			snprintf(tmp, sizeof(tmp), "\\x%02x", c);
 		else
 			*tmp = c;
@@ -39,7 +39,7 @@ static void escaped(char *out, unsigned int outsize, const char* buf, unsigned i
 static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t port, const char *banner, unsigned int bannerlen)
 {
 	// banner tcp <port> <ip> <ts> <proto> <banner>
-	char addrstr[IPV6_STRING_MAX], buffer[4096];
+	char addrstr[IPV6_STRING_MAX], buffer[16384];
 
 	// output_banner() is called from a diff. thread, need to buffer output here
 	*buffer = '\0';

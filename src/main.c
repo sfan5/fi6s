@@ -303,15 +303,18 @@ static bool is_allFF(const uint8_t *buf, int len)
 	while(len--) {
 		if(*(buf++) != 0xff)
 			return false;
-	};
+	}
 	return true;
 }
 
 static void trim(char *buf, const char *trimchars)
 {
 	// front
-	while(*buf && strchr(trimchars, *buf))
-		memmove(buf, &buf[1], strlen(buf));
+	int i = 0;
+	while(buf[i] && strchr(trimchars, buf[i]))
+		i++;
+	if(i > 0)
+		memmove(buf, &buf[i], strlen(buf) + 1 - i);
 
 	// back
 	char *ptr = buf + strlen(buf) - 1;

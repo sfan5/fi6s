@@ -25,8 +25,7 @@ int rawsock_open(const char *dev, int buffersize)
 		return -1;
 	}
 	linktype = pcap_datalink(handle);
-	if(linktype != DLT_EN10MB && linktype != 12 /* what? */) {
-		printf("linktype = %d\n", linktype);
+	if(linktype != DLT_EN10MB && linktype != DLT_RAW) {
 		fprintf(stderr, "Selected interface does not provide Ethernet or IP headers.\n");
 		goto err;
 	}

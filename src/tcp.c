@@ -1,4 +1,4 @@
-#define _DEFAULT_SOURCE // htobe{16,32}()
+#define _DEFAULT_SOURCE // htobe16, htobe32
 #include <string.h>
 #include <endian.h>
 #include <assert.h>
@@ -54,10 +54,21 @@ void tcp_make_ack(struct tcp_header *pkt, uint32_t seqnum, uint32_t acknum)
 	pkt->acknum = htobe32(acknum);
 }
 
+// inline, so the result can be declared "static const"
+#define bswap32(x) ( \
+	(((x) & 0xff) << 24) | \
+	((((x) >> 8) & 0xff) << 16) | \
+	((((x) >> 16) & 0xff) << 8) | \
+	((x) >> 24) )
+
 void tcp_checksum_nodata(const struct frame_ip *ipf, struct tcp_header *pkt)
 {
-	const _Alignas(uint16_t) struct pseudo_header ph = {
-		.len = htobe32(TCP_HEADER_SIZE),
+	static const _Alignas(uint16_t) struct pseudo_header ph = {
+#if __BYTE_ORDER == __BIG_ENDIAN
+		.len = TCP_HEADER_SIZE,
+#else
+		.len = bswap32(TCP_HEADER_SIZE),
+#endif
 		.zero = {0},
 		.ipproto = 0x06, // IPPROTO_TCP
 	};
@@ -72,7 +83,7 @@ void tcp_checksum_nodata(const struct frame_ip *ipf, struct tcp_header *pkt)
 
 void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt, uint16_t dlen)
 {
-	const _Alignas(uint16_t) struct pseudo_header ph = {
+	_Alignas(uint16_t) struct pseudo_header ph = {
 		.len = htobe32(TCP_HEADER_SIZE + dlen),
 		.zero = {0},
 		.ipproto = 0x06, // IPPROTO_TCP

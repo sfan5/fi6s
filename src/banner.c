@@ -5,15 +5,22 @@
 
 const char *banner_get_query(int port, unsigned int *len)
 {
+	static const char ftp[] =
+		"HELP\r\n"
+	;
 	static const char http[] =
 		"GET / HTTP/1.0\r\n"
 		"Accept: */*\r\n"
-		"User-Agent: TEST\r\n"
+		"User-Agent: fi6s/0.1 (+https://github.com/sfan5/fi6s)\r\n"
 		"\r\n"
 	;
 
 	switch(port) {
+		case 21:
+			*len = strlen(ftp);
+			return ftp;
 		case 22:
+		case 23:
 			*len = 0;
 			return "";
 		case 80:
@@ -27,6 +34,9 @@ const char *banner_get_query(int port, unsigned int *len)
 void banner_postprocess(int port, char *banner, unsigned int *len)
 {
 	switch(port) {
+		case 21:
+		case 23:
+			break; // do nothing
 		case 22: {
 			// cut off after identification string or first NUL
 			char *end;

@@ -247,6 +247,8 @@ int main(int argc, char *argv[])
 			missing = "--source-ip";
 		else if(!validate_ports(&ports))
 			missing = "-p";
+		else if(banners && source_port == -1)
+			missing = "--source-port";
 
 		if(missing) {
 			printf("Option %s is required but was not given.\n", missing);

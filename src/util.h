@@ -35,4 +35,7 @@ int strchr_count(const char *str, int c); // counts occurrences of c
 		dst[n] = '\0'; \
 	} while(0)
 
+#define my_strlcat(dst, src, size) /* see strlcat(3) from libbsd */ \
+	strncat(dst, src, (size) - strlen(dst) - 1)
+
 #endif // _UTIL_H

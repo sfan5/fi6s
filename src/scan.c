@@ -67,7 +67,7 @@ int scan_main(const char *interface, int quiet)
 {
 	if(rawsock_open(interface, 65536) < 0)
 		return -1;
-	setvbuf(outfile, NULL, _IOLBF, 1024);
+	setvbuf(outfile, NULL, _IOLBF, 4096);
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	send_finished = false;

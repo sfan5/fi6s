@@ -97,6 +97,14 @@ void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt, uint16_t d
 	pkt->csum = chksum_final(csum, (uint16_t*) pkt, TCP_HEADER_SIZE + dlen); // packet contents + data
 }
 
+void tcp_decode_header(const struct tcp_header *pkt, unsigned int *data_offset)
+{
+	unsigned int hdrlen = pkt->offset << 2;
+	if(hdrlen < TCP_HEADER_SIZE)
+		hdrlen = TCP_HEADER_SIZE;
+	*data_offset = hdrlen;
+}
+
 void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport)
 {
 	if(srcport)

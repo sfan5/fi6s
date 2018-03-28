@@ -25,6 +25,7 @@ struct tcp_header {
 	uint16_t csum; // Checksum
 	uint16_t urgptr; // Urgent pointer
 } __attribute__((packed));
+typedef unsigned int tcp_state_id;
 struct frame_ip;
 
 void tcp_prepare(struct tcp_header *pkt);
@@ -34,7 +35,23 @@ void tcp_make_ack(struct tcp_header *pkt, uint32_t seqnum, uint32_t acknum);
 void tcp_checksum_nodata(const struct frame_ip *ipf, struct tcp_header *pkt);
 void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt, uint16_t dlen);
 
+void tcp_decode_header(const struct tcp_header *pkt, unsigned int *data_offset);
 void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport);
 void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknum);
+
+
+int tcp_state_init(int count);
+tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
+	uint64_t ts, uint32_t first_seqnum); // called on SYN-ACK
+void tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
+	void *data, unsigned int length,
+	uint32_t seqnum); // called whenever data is received
+
+void *tcp_state_get_buffer(tcp_state_id id, unsigned int *length); // writable!
+uint64_t tcp_state_get_timestamp(tcp_state_id id);
+const uint8_t *tcp_state_get_remote(tcp_state_id id, uint16_t *port);
+
+int tcp_state_next_expired(int timeout_ms, tcp_state_id *id);
+void tcp_state_destroy(tcp_state_id id);
 
 #endif // _TCP_H

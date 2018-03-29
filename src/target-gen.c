@@ -41,7 +41,7 @@ void target_gen_init(void)
 
 void target_gen_set_randomized(int v)
 {
-	randomize = v ? 1 : 0;
+	randomize = !!v;
 }
 
 float target_gen_progress(void)
@@ -79,10 +79,14 @@ int target_gen_add(const struct targetspec *s)
 	}
 	if(i == -1)
 		return -1;
+
 	targets[i].used = 1;
 	targets[i].done = 0;
 	memcpy(&targets[i].spec, s, sizeof(struct targetspec));
 	memset(targets[i].cur, 0, 16);
+
+	if (i > 1 && randomize)
+		shuffle(targets, sizeof(struct targetstate), i+1);
 	return 0;
 }
 

@@ -57,7 +57,10 @@ float target_gen_progress(void)
 		progress_single(&targets[i], &total, &done);
 	}
 	done -= cache_size - cache_i;
-	return (total == 0 || done == 0) ? 1.0 : ( done / (float) total );
+
+	if(total == 0) // does this even happen?
+		return 0.0f;
+	return (done * 1000 / total) / 1000.0f;
 }
 
 void target_gen_fini(void)
@@ -162,20 +165,20 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 
 static inline void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)
 {
-	int bits = 0;
-	uint64_t _done = 0;
+	uint64_t _total = 0, _done = 0;
 	for(int i = 0; i < 16; i++) {
 		for(int j = (1 << 7); j != 0; j >>= 1) {
 			if(t->spec.mask[i] & j)
 				continue;
-			bits++;
+			_total <<= 1;
+			_total |= 1;
 			_done <<= 1;
 			_done |= !!(t->cur[i] & j);
 		}
 	}
-	*total += (1 << bits) - 1;
-	if(t->done) // _done == 0 but the target is actually complete
-		*done += (1 << bits) - 1;
+	*total += _total;
+	if(t->done) // _done will equal zero but the target is actually complete
+		*done += _total;
 	else
 		*done += _done;
 }

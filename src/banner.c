@@ -7,6 +7,7 @@ const char *banner_get_query(int port, unsigned int *len)
 {
 	static const char ftp[] =
 		"HELP\r\n"
+		"FEAT\r\n"
 	;
 	static const char http[] =
 		"GET / HTTP/1.0\r\n"
@@ -24,6 +25,7 @@ const char *banner_get_query(int port, unsigned int *len)
 			*len = 0;
 			return "";
 		case 80:
+		case 8080:
 			*len = strlen(http);
 			return http;
 		default:
@@ -34,9 +36,6 @@ const char *banner_get_query(int port, unsigned int *len)
 void banner_postprocess(int port, char *banner, unsigned int *len)
 {
 	switch(port) {
-		case 21:
-		case 23:
-			break; // do nothing
 		case 22: {
 			// cut off after identification string or first NUL
 			char *end;
@@ -47,7 +46,8 @@ void banner_postprocess(int port, char *banner, unsigned int *len)
 				*len = end - banner;
 			break;
 		}
-		case 80: {
+		case 80:
+		case 8080: {
 			// cut off after headers
 			char *end = (char*) memmem(banner, *len, "\r\n\r\n", 4);
 			if(!end)
@@ -56,5 +56,8 @@ void banner_postprocess(int port, char *banner, unsigned int *len)
 				*len = end - banner;
 			break;
 		}
+
+		default:
+			break; // do nothing
 	}
 }

@@ -88,7 +88,12 @@ static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uin
 	struct tcp_state *s = &states[id];
 	if(seqnum < s->first_seqnum) // pretend seqnum wraparound doesn't exist
 		return;
+
 	unsigned int offset = seqnum - s->first_seqnum;
+	if(offset > TCP_BUFFER_LEN)
+		return;
+	else if(offset + length > TCP_BUFFER_LEN)
+		length = TCP_BUFFER_LEN - offset;
 	memcpy(&s->buffer[offset], data, length);
 	if(seqnum + length > s->max_seqnum)
 		s->max_seqnum = seqnum + length; 

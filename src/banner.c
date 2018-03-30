@@ -3,6 +3,25 @@
 
 #include "banner.h"
 
+static const char *typemap_low[1024] = {
+	[21] = "ftp",
+	[22] = "ssh",
+	[23] = "telnet",
+	[80] = "http",
+};
+
+const char *banner_service_type(int port)
+{
+	if(port < 1024)
+		return typemap_low[port];
+	switch(port) {
+		case 8080:
+			return typemap_low[80];
+		default:
+			return NULL;
+	}
+}
+
 const char *banner_get_query(int port, unsigned int *len)
 {
 	static const char ftp[] =

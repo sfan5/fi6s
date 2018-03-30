@@ -4,6 +4,7 @@
 
 #include "output.h"
 #include "util.h"
+#include "banner.h"
 
 static void begin(FILE *f)
 {
@@ -39,14 +40,16 @@ static void escaped(char *out, unsigned int outsize, const char* buf, unsigned i
 static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t port, const char *banner, unsigned int bannerlen)
 {
 	// banner tcp <port> <ip> <ts> <proto> <banner>
-	char addrstr[IPV6_STRING_MAX], buffer[16384];
+	char addrstr[IPV6_STRING_MAX], buffer[BANNER_MAX_LENGTH * (2+2)];
+	const char *svc;
 
 	// output_banner() is called from a diff. thread, need to buffer output here
 	*buffer = '\0';
 	escaped(buffer, sizeof(buffer), banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
-	fprintf(f, "banner tcp %u %s %" PRIu64 " ? %s\n", port, addrstr, ts, buffer);
+	svc = banner_service_type(port);
+	fprintf(f, "banner tcp %u %s %" PRIu64 " %s %s\n", port, addrstr, ts, svc ? svc : "?", buffer);
 }
 
 static void end(FILE *f)

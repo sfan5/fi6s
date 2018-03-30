@@ -4,6 +4,7 @@
 
 #include "output.h"
 #include "util.h"
+#include "banner.h"
 
 static void begin(FILE *f)
 {
@@ -38,15 +39,17 @@ static void json_escape(char *out, unsigned int outsize, const char* buf, unsign
 static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t port, const char *banner, unsigned int bannerlen)
 {
 	// {"ip": "<ip>", "timestamp": <ts>, "ports": [{"port": <port>, "proto": "tcp", "service": {"name": "http", "banner": "......"}}]},
-	char addrstr[IPV6_STRING_MAX], buffer[16384];
+	char addrstr[IPV6_STRING_MAX], buffer[BANNER_MAX_LENGTH * (4+2)];
+	const char *svc;
 
-	// buffer output here
+	// use buffer so we can fprintf everything at once
 	*buffer = '\0';
 	json_escape(buffer, sizeof(buffer), banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
-	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"tcp\", \"service\": {\"name\": null, \"banner\": \"%s\"}}]},\n",
-		addrstr, ts, port, buffer
+	svc = banner_service_type(port);
+	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"tcp\", \"service\": {\"name\": \"%s\", \"banner\": \"%s\"}}]},\n",
+		addrstr, ts, port, svc ? svc : "", buffer
 	);
 }
 

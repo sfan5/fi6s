@@ -94,17 +94,21 @@ static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uin
 		s->max_seqnum = seqnum + length; 
 }
 
-void tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
+int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
 	void *data, unsigned int length, uint32_t seqnum)
 {
 	tcp_state_id id;
+	int r = 1;
 	pthread_mutex_lock(&states_lock);
-	if(!tcp_state_find(srcaddr, srcport, &id))
+	if(!tcp_state_find(srcaddr, srcport, &id)) {
+		r = 0;
 		goto ret;
+	}
 	tcp_state_push(id, data, length, seqnum);
 
 	ret:
 	pthread_mutex_unlock(&states_lock);
+	return r;
 }
 
 

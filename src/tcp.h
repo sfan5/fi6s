@@ -31,6 +31,7 @@ struct frame_ip;
 void tcp_prepare(struct tcp_header *pkt);
 void tcp_modify(struct tcp_header *pkt, int srcport, int dstport);
 void tcp_make_syn(struct tcp_header *pkt, uint32_t seqnum);
+void tcp_make_rst(struct tcp_header *pkt, uint32_t seqnum);
 void tcp_make_ack(struct tcp_header *pkt, uint32_t seqnum, uint32_t acknum);
 void tcp_checksum_nodata(const struct frame_ip *ipf, struct tcp_header *pkt);
 void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt, uint16_t dlen);
@@ -43,7 +44,7 @@ void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknu
 int tcp_state_init(int count);
 tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
 	uint64_t ts, uint32_t first_seqnum); // called on SYN-ACK
-void tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
+int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
 	void *data, unsigned int length,
 	uint32_t seqnum); // called whenever data is received
 

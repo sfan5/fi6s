@@ -18,7 +18,8 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
 SRC = \
-	main.c util.c scan.c \
+	main.c util.c \
+	scan.c scan-responder.c \
 	target-parse.c target-gen.c \
 	rawsock-pcap.c rawsock-frame.c rawsock-routes.c \
 	output-list.c output-json.c output-binary.c \

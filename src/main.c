@@ -11,6 +11,7 @@
 #include "target.h"
 #include "rawsock.h"
 #include "scan.h"
+#include "output.h"
 
 static void usage(void);
 static bool is_allFF(const uint8_t *buf, int len);

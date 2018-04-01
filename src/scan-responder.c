@@ -155,9 +155,11 @@ static void *tcp_thread(void *unused)
 			uint16_t srcport;
 			const uint8_t *srcaddr = tcp_state_get_remote(id, &srcport);
 
-			// output banner to file
-			banner_postprocess(srcport, buf, &len);
-			responder.outdef->output_banner(responder.outfile, ts, srcaddr, srcport, buf, len);
+			if (len > 0) {
+				// output banner to file
+				banner_postprocess(srcport, buf, &len);
+				responder.outdef->output_banner(responder.outfile, ts, srcaddr, srcport, buf, len);
+			}
 
 			// destroy tcp session
 			tcp_state_destroy(id);

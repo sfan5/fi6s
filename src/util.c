@@ -8,28 +8,56 @@
 
 #include "util.h"
 
+static void zc_find_range(const uint8_t *addr, int *first, int *last);
+
 void ipv6_string(char *dst, const uint8_t *addr)
 {
-	int pos = 0;
-	int zc_state = 0; // 0 = pre-use, 1 = during, 2 = after ("dumb" impl. of zero compression)
+	int pos = 0,
+		zc_first, zc_last;
+	zc_find_range(addr, &zc_first, &zc_last);
+
 	for(int i = 0; i < 8; i++) {
 		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
 
-		if(cur == 0 && zc_state == 0 && i != 7 && i != 0) {
-			zc_state = 1;
-			pos += snprintf(&dst[pos], 2, ":");
-		} else if(cur != 0 && zc_state == 1) {
-			zc_state = 2;
+		if(i == zc_first) {
+			if(i == 0)
+				pos += snprintf(&dst[pos], 3, "::");
+			else
+				pos += snprintf(&dst[pos], 2, ":");
+			continue;
+		} else if(i > zc_first && i <= zc_last) {
+			continue;
 		}
 
-		if(zc_state == 1)
-			continue;
-		if(cur == 0 && (i == 0 || i == 7)) // zeroe elements (first or last) maybe omitted
-			goto seperator;
 		pos += snprintf(&dst[pos], 5, "%x", cur);
-		seperator:
 		if(i != 7)
 			pos += snprintf(&dst[pos], 2, ":");
+	}
+}
+
+static void zc_find_range(const uint8_t *addr, int *first, int *last)
+{
+	int max_length = 0,
+		cur_length = 0;
+	*first = *last = -1;
+	for(int i = 0; i < 8; i++) {
+		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
+
+		if(cur == 0) {
+			cur_length++;
+			continue;
+		}
+		// cur >== max to prefer compressing later zero sequences
+		if(cur_length > 0 && cur_length >= max_length) {
+			*first = i - cur_length;
+			*last = i - 1;
+			max_length = cur_length;
+			cur_length = 0;
+		}
+	}
+	if(cur_length > 0 && cur_length >= max_length) {
+		*first = 8 - cur_length;
+		*last = 8 - 1;
 	}
 }
 

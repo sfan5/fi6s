@@ -93,6 +93,7 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 			return -1;
 		strncpy_term(cur, p, next - p);
 
+		// FIXME: this will accept invalid addrs like :12::34:
 		if((i == 0 || i == 7) && strlen(cur) == 0)
 			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
 		if(strlen(cur) == 0) {

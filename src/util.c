@@ -57,6 +57,7 @@ int parse_ipv6(const char *str, uint8_t *dst)
 {
 	memset(dst, 0, 16);
 	int given = strchr_count(str, ':') + 1;
+	// FIXME: this will not accept 1:2:3:4:5:6:7:: (eq 1:2:3:4:5:6:7:0)
 	if(given < 3 || given > 8) // '::' is 3 elements
 		return -1;
 
@@ -68,6 +69,7 @@ int parse_ipv6(const char *str, uint8_t *dst)
 			return -1;
 		strncpy_term(cur, p, next - p);
 
+		// FIXME: this will accept invalid addrs like :12::34:
 		if((i == 0 || i == 7) && strlen(cur) == 0)
 			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
 		if(strlen(cur) == 0) {

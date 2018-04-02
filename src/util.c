@@ -1,5 +1,5 @@
 #define _DEFAULT_SOURCE // htobe16()
-#define _GNU_SOURCE // strchrnul(), reallocarray()
+#define _GNU_SOURCE // strchrnul()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -258,7 +258,7 @@ int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, un
 	if(used < *total)
 		return 0;
 	unsigned int new_total = *total ? *total * 2 : 64;
-	void *new_array = reallocarray(*array, new_total, elemsize);
+	void *new_array = realloc(*array, new_total * elemsize);
 	if(new_array == NULL)
 		return -1;
 	*array = new_array;

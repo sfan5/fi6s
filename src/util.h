@@ -28,6 +28,8 @@ int parse_ipv6(const char *str, uint8_t *dst); // parses IPv6 address string and
 int strtol_suffix(const char *str); // parses number and permits k suffix that multiplies by 1000
 int strtol_simple(const char *str, int base); // parses number
 int strchr_count(const char *str, int c); // counts occurrences of c
+int realloc_if_needed(void **array, unsigned int elemsize,
+		unsigned int used, unsigned int *total); // reallocarray() wrapper for convenience
 
 #define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
 	do { \

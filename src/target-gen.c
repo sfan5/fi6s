@@ -3,9 +3,10 @@
 #include <string.h>
 
 #include "target.h"
+#include "util.h"
 
 struct targetstate {
-	int used:1, done:1;
+	int done:1;
 	struct targetspec spec;
 	uint8_t cur[16];
 };
@@ -22,11 +23,13 @@ static uint8_t *cache;
 static int cache_i;
 static int cache_size;
 
-struct targetstate targets[MAX_TARGETS];
-static int targets_i;
+struct targetstate *targets;
+static unsigned int targets_i, targets_size;
+#define REALLOC_TARGETS() \
+	realloc_if_needed((void**) &targets, sizeof(struct targetstate), targets_i, &targets_size)
 
 
-void target_gen_init(void)
+int target_gen_init(void)
 {
 	cache = malloc(16*RANDOMIZE_SIZE);
 	if(!cache)
@@ -34,9 +37,9 @@ void target_gen_init(void)
 	cache_i = 0;
 	cache_size = 0;
 
-	targets_i = 0;
-	for(int i = 0; i < MAX_TARGETS; i++)
-		targets[i].used = 0;
+	targets = NULL;
+	targets_i = targets_size = 0;
+	return REALLOC_TARGETS();
 }
 
 void target_gen_set_randomized(int v)
@@ -51,11 +54,8 @@ float target_gen_progress(void)
 	// Those are added together and used to calculate the percentage (don't forget the cache though)
 	// It only took two^Wthree tries to get this right!
 	uint64_t total = 0, done = 0;
-	for(int i = 0; i < MAX_TARGETS; i++) {
-		if(!targets[i].used)
-			continue;
+	for(int i = 0; i < targets_i; i++)
 		progress_single(&targets[i], &total, &done);
-	}
 	done -= cache_size - cache_i;
 
 	if(total == 0) // does this even happen?
@@ -66,21 +66,15 @@ float target_gen_progress(void)
 void target_gen_fini(void)
 {
 	free(cache);
+	free(targets);
 }
 
 int target_gen_add(const struct targetspec *s)
 {
-	int i = -1;
-	for(int j = 0; j < MAX_TARGETS; j++) {
-		if(targets[j].used)
-			continue;
-		i = j;
-		break;
-	}
-	if(i == -1)
+	int i = targets_i++;
+	if(REALLOC_TARGETS() < 0)
 		return -1;
 
-	targets[i].used = 1;
 	targets[i].done = 0;
 	memcpy(&targets[i].spec, s, sizeof(struct targetspec));
 	memset(targets[i].cur, 0, 16);
@@ -121,8 +115,8 @@ static void fill_cache(void)
 	cache_size = 0;
 	while(1) {
 		int any = 0;
-		for(int i = 0; i < MAX_TARGETS; i++) {
-			if(!targets[i].used || targets[i].done)
+		for(int i = 0; i < targets_i; i++) {
+			if(targets[i].done)
 				continue;
 			any = 1;
 			next_addr(&targets[i], &cache[cache_size*16]);

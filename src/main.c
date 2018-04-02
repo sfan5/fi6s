@@ -185,7 +185,8 @@ int main(int argc, char *argv[])
 	}
 
 	srand(time(NULL) ^ getpid());
-	target_gen_init();
+	if(target_gen_init() < 0)
+		return 1;
 	target_gen_set_randomized(randomize_hosts);
 	rawsock_eth_settings(source_mac, router_mac);
 	rawsock_ip_settings(source_addr, ttl);
@@ -212,7 +213,6 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 			if(target_gen_add(&t) < 0) {
-				printf("Too many targets specified in file.\n");
 				fclose(f);
 				return 1;
 			}

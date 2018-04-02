@@ -1,5 +1,5 @@
 #define _DEFAULT_SOURCE // htobe16()
-#define _GNU_SOURCE // strchrnul()
+#define _GNU_SOURCE // strchrnul(), reallocarray()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -251,4 +251,17 @@ int strchr_count(const char *str, int c)
 	while(*p)
 		ret += *(p++) == c;
 	return ret;
+}
+
+int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, unsigned int *total)
+{
+	if(used < *total)
+		return 0;
+	unsigned int new_total = *total ? *total * 2 : 64;
+	void *new_array = reallocarray(*array, new_total, elemsize);
+	if(new_array == NULL)
+		return -1;
+	*array = new_array;
+	*total = new_total;
+	return 0;
 }

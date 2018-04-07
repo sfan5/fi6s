@@ -120,9 +120,15 @@ void banner_postprocess(uint8_t ip_type, int port, char *banner, unsigned int *l
 			int off = ip_type == IP_TYPE_UDP ? 0 : 2; // skip length field if required
 			BREAK_ERR_IF(off + 12 > *len)
 			uint16_t flags = (banner[off+2] << 8) | banner[off+3];
-			if((flags & 0x8000) != 0x8000 || (flags & 0xf) != 0x0) {
-				strncpy(banner, "<SERVFAIL>", 10);
-				*len = 10;
+			uint8_t rcode = (flags & 0xf);
+			if((flags & 0x8000) != 0x8000 || rcode != 0x0) {
+				if(rcode == 4)
+					strncpy(banner, "-NOTIMPL-", 12);
+				else if(rcode == 5)
+					strncpy(banner, "-REFUSED-", 12);
+				else
+					strncpy(banner, "-SERVFAIL-", 12);
+				*len = strlen(banner);
 				break;
 			}
 

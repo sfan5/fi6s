@@ -1,25 +1,11 @@
 #define _DEFAULT_SOURCE // htobe16, htobe32
 #include <string.h>
 #include <endian.h>
-#include <assert.h>
 
 #include "tcp.h"
+#include "util.h"
 #include "rawsock.h"
 
-#define PSEUDO_HEADER_SIZE 40
-#define CHKSUM_INITIAL 0x0000
-
-// pseudo IPv6 header utilized in checksumming
-struct pseudo_header {
-	uint8_t src[16];
-	uint8_t dest[16];
-	uint32_t len;
-	uint8_t zero[3];
-	uint8_t ipproto;
-} __attribute__((packed));
-
-static inline void chksum(uint32_t *tmp, const uint16_t *p, int n);
-static uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n);
 static inline void reset_flags(struct tcp_header *pkt);
 
 void tcp_prepare(struct tcp_header *pkt)
@@ -109,28 +95,4 @@ static inline void reset_flags(struct tcp_header *pkt)
 	pkt->f_psh = 0;
 	pkt->f_ack = 0;
 	pkt->f_urg = 0;
-}
-
-static inline void chksum(uint32_t *tmp, const uint16_t *p, int n)
-{
-	assert(n % 2 == 0);
-	while(n > 0) {
-		*tmp += *p++;
-		n -= 2;
-	}
-}
-
-static uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)
-{
-	while(n > 1) {
-		sum += *p++;
-		n -= 2;
-	}
-	if(n == 1)
-		sum += *((uint8_t*) p);
-
-	sum = (sum>>16) + (sum & 0xffff);
-	sum = sum + (sum>>16);
-
-	return ~sum;
 }

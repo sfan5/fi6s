@@ -31,6 +31,11 @@ int strchr_count(const char *str, int c); // counts occurrences of c
 int realloc_if_needed(void **array, unsigned int elemsize,
 		unsigned int used, unsigned int *total); // reallocarray() wrapper for convenience
 
+// UDP/TCP checksumming
+#define CHKSUM_INITIAL 0x0000
+void chksum(uint32_t *tmp, const uint16_t *p, int n);
+uint16_t chksum_final(uint32_t tmp, const uint16_t *p, int n);
+
 #define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
 	do { \
 		strncpy(dst, src, n); \

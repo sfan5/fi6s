@@ -36,6 +36,16 @@ struct frame_ip {
 	uint8_t dest[16]; // Destination Address
 } __attribute__((packed));
 
+// pseudo IPv6 header utilized in checksumming
+#define PSEUDO_HEADER_SIZE 40
+struct pseudo_header {
+	uint8_t src[16];
+	uint8_t dest[16];
+	uint32_t len;
+	uint8_t zero[3];
+	uint8_t ipproto;
+} __attribute__((packed));
+
 typedef void (*rawsock_callback)(uint64_t,int,const uint8_t*);
 
 int rawsock_open(const char *dev, int buffersize);

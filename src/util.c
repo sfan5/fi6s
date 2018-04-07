@@ -5,6 +5,7 @@
 #include <string.h>
 #include <ctype.h> // isdigit()
 #include <endian.h>
+#include <assert.h>
 
 #include "util.h"
 
@@ -220,6 +221,7 @@ int ports_iter_next(struct ports_iter *it)
 	return 1;
 }
 
+
 int strtol_suffix(const char *str)
 {
 	char *endptr;
@@ -264,4 +266,29 @@ int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, un
 	*array = new_array;
 	*total = new_total;
 	return 0;
+}
+
+
+void chksum(uint32_t *tmp, const uint16_t *p, int n)
+{
+	assert(n % 2 == 0);
+	while(n > 0) {
+		*tmp += *p++;
+		n -= 2;
+	}
+}
+
+uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)
+{
+	while(n > 1) {
+		sum += *p++;
+		n -= 2;
+	}
+	if(n == 1)
+		sum += *((uint8_t*) p);
+
+	sum = (sum>>16) + (sum & 0xffff);
+	sum = sum + (sum>>16);
+
+	return ~sum;
 }

@@ -40,19 +40,23 @@ static void json_escape(char *out, unsigned int outsize, const char* buf, unsign
 static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, unsigned int bannerlen)
 {
 	// {"ip": "<ip>", "timestamp": <ts>, "ports": [{"port": <port>, "proto": "<tcp/udp>", "service": {"name": "http", "banner": "......"}}]},
-	char addrstr[IPV6_STRING_MAX], buffer[BANNER_MAX_LENGTH * (4+2)];
-	const char *svc;
+	char addrstr[IPV6_STRING_MAX], svc[128], buffer[BANNER_MAX_LENGTH * (4+2)];
+	const char *temp;
 
 	// use buffer so we can fprintf everything at once
 	*buffer = '\0';
 	json_escape(buffer, sizeof(buffer), banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
-	svc = banner_service_type(banner_outproto2ip_type(proto), port);
-	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"%s\", \"service\": {\"name\": \"%s\", \"banner\": \"%s\"}}]},\n",
+	temp = banner_service_type(banner_outproto2ip_type(proto), port);
+	if(temp)
+		snprintf(svc, sizeof(svc), "\"%s\"", temp);
+	else
+		strncpy(svc, "null", sizeof(svc));
+	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"%s\", \"service\": {\"name\": %s, \"banner\": \"%s\"}}]},\n",
 		addrstr, ts, port,
 		proto == OUTPUT_PROTO_TCP ? "tcp" : "udp",
-		svc ? svc : "", buffer
+		svc, buffer
 	);
 }
 

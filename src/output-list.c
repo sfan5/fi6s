@@ -30,7 +30,7 @@ static void escaped(char *out, unsigned int outsize, const char* buf, unsigned i
 	for(unsigned int i = 0; i < len; i++) {
 		int c = buf[i];
 		char tmp[5] = {0};
-		if(c > 127 || !isprint(c) || strchr("\r\n\"\\", c) != NULL)
+		if(c > 127 || !isprint(c))
 			snprintf(tmp, sizeof(tmp), "\\x%02x", c);
 		else
 			*tmp = c;

@@ -32,12 +32,17 @@ static bool send_finished;
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
 static void *send_thread_udp(void *unused);
+
 static void *recv_thread(void *unused);
 static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
+static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
+static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
 
 #if ATOMIC_INT_LOCK_FREE != 2
 #warning Non lock-free atomic types will severely affect performance.
 #endif
+
+/****/
 
 void scan_set_general(const struct ports *_ports, int _max_rate, int _show_closed, int _banners)
 {
@@ -134,6 +139,8 @@ int scan_main(const char *interface, int quiet)
 	r = 1;
 	goto ret;
 }
+
+/****/
 
 static void *send_thread(void *unused)
 {
@@ -233,6 +240,8 @@ static void *send_thread_udp(void *unused)
 	return NULL;
 }
 
+/****/
+
 static void *recv_thread(void *unused)
 {
 	(void) unused;
@@ -262,42 +271,14 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
 		goto perr;
 	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);
-	if(!udp) {
-		if(v != IP_TYPE_TCP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
-			goto perr;
-	} else {
-		if(v != IP_TYPE_UDP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE)
-			goto perr;
-	}
+	uint8_t expect = udp ? IP_TYPE_UDP : IP_TYPE_TCP;
+	if(v != expect)
+		goto perr;
 
-	// Output stuff
-	int v2;
-	if(!udp) {
-		if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
-			tcp_decode(TCP_HEADER(packet), &v, NULL);
-			rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-			if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
-				outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
-		}
-		// Pass packet to responder
-		if(banners)
-			scan_responder_process(ts, len, packet);
-	} else {
-		tcp_decode(TCP_HEADER(packet), &v, NULL);
-		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		if(banners) {
-			unsigned int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE);
-			if(plen > 0) {
-				char temp[plen];
-				memcpy(temp, UDP_DATA(packet), plen);
-				banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
-				outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, temp, plen);
-			}
-		} else {
-			// We got an answer, that's already noteworthy enough
-			outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, v2, OUTPUT_STATUS_OPEN);
-		}
-	}
+	if(!udp)
+		recv_handler_tcp(ts, len, packet, csrcaddr);
+	else
+		recv_handler_udp(ts, len, packet, csrcaddr);
 
 	return;
 	perr: ;
@@ -305,6 +286,65 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	fprintf(stderr, "Failed to decode packet of length %d\n", len);
 #endif
 }
+
+static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+{
+	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
+		goto perr;
+
+	// Output stuff
+	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
+		int v, v2;
+		tcp_decode(TCP_HEADER(packet), &v, NULL);
+		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
+		int st = TCP_HEADER(packet)->f_syn? OUTPUT_STATUS_OPEN : OUTPUT_STATUS_CLOSED;
+		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
+			outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, st);
+	}
+	// Pass packet to responder
+	if(banners)
+		scan_responder_process(ts, len, packet);
+
+	return;
+	perr: ;
+#ifndef NDEBUG
+	fprintf(stderr, "Failed to decode TCP packet of length %d\n", len);
+#endif
+}
+
+static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+{
+	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE)
+		goto perr;
+
+	int v;
+	udp_decode(UDP_HEADER(packet), &v, NULL);
+	if(!banners) {
+		// We got an answer, that's already noteworthy enough
+		int v2;
+		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
+		outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, v2, OUTPUT_STATUS_OPEN);
+		return;
+	}
+
+	unsigned int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE);
+	if(plen == 0)
+		return;
+	else if(plen > BANNER_MAX_LENGTH)
+		plen = BANNER_MAX_LENGTH;
+	char temp[BANNER_MAX_LENGTH];
+	memcpy(temp, UDP_DATA(packet), plen);
+	banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
+	outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, temp, plen);
+
+	return;
+	perr: ;
+#ifndef NDEBUG
+	fprintf(stderr, "Failed to decode UDP packet of length %d\n", len);
+#endif
+}
+
+/****/
 
 static inline int source_port_rand(void)
 {

@@ -25,11 +25,6 @@ static struct {
 
 static void *tcp_thread(void *unused);
 
-#define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )
-#define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
-#define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
-#define DATA(buf, data_offset) ( (uint8_t*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE + data_offset] )
-
 int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t source_port)
 {
 	uint8_t *spacket = responder.buffer;
@@ -74,7 +69,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 		// push data into session buffer
 		tcp_debug("< seqnum = %08x got data\n", rseqnum);
-		int ok = tcp_state_find_and_push(rsrcaddr, rport, DATA(rpacket, data_offset), plen, rseqnum);
+		int ok = tcp_state_find_and_push(rsrcaddr, rport, TCP_DATA(rpacket, data_offset), plen, rseqnum);
 
 		if(!TCP_HEADER(rpacket)->f_ack)
 			return; // FIXME: we should keep track of our own seqnums
@@ -109,7 +104,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		rseqnum += 1; // syn-ack increases seqnum by one
 
 		unsigned int plen;
-		const char *payload = banner_get_query(rport, &plen);
+		const char *payload = banner_get_query(IP_TYPE_TCP, rport, &plen);
 		if(!payload) {
 			// we don't actually want to grab a banner, send an RST
 			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
@@ -128,7 +123,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_make_ack(TCP_HEADER(spacket), FIRST_SEQNUM + 1, rseqnum);
 		TCP_HEADER(spacket)->f_psh = (plen > 0);
 		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
-		memcpy(DATA(spacket, TCP_HEADER_SIZE), payload, plen);
+		memcpy(TCP_DATA(spacket, TCP_HEADER_SIZE), payload, plen);
 
 		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), plen);
 		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + plen);
@@ -157,7 +152,7 @@ static void *tcp_thread(void *unused)
 
 			if (len > 0) {
 				// output banner to file
-				banner_postprocess(srcport, buf, &len);
+				banner_postprocess(IP_TYPE_TCP, srcport, buf, &len);
 				responder.outdef->output_banner(responder.outfile, ts, srcaddr, srcport, buf, len);
 			}
 

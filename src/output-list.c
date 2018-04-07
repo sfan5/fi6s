@@ -48,7 +48,7 @@ static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t po
 	escaped(buffer, sizeof(buffer), banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
-	svc = banner_service_type(port);
+	svc = banner_service_type(0x06, port); // TODO
 	fprintf(f, "banner tcp %u %s %" PRIu64 " %s %s\n", port, addrstr, ts, svc ? svc : "?", buffer);
 }
 

@@ -15,6 +15,7 @@
 #include "rawsock.h"
 #include "tcp.h"
 #include "udp.h"
+#include "banner.h"
 
 static uint8_t source_addr[16];
 static int source_port;
@@ -33,11 +34,6 @@ static void *send_thread(void *unused);
 static void *send_thread_udp(void *unused);
 static void *recv_thread(void *unused);
 static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
-
-#define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )
-#define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
-#define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
-#define UDP_HEADER(buf) ( (struct udp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
 
 #if ATOMIC_INT_LOCK_FREE != 2
 #warning Non lock-free atomic types will severely affect performance.
@@ -80,11 +76,10 @@ int scan_main(const char *interface, int quiet)
 			int count = max_rate == INT_MAX ? 65536 : (max_rate * BANNER_TIMEOUT / 1000);
 			if(tcp_state_init(count) < 0)
 				goto err;
-		} else {
-			banners = 0; // TODO
-			fprintf(stderr, "UDP banners unsupported\n", FINISH_WAIT_TIME);
 		}
 	}
+	if(!banners && udp && !quiet)
+		fprintf(stderr, "Warning: UDP scans don't really make sense without banners.\n");
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
@@ -185,7 +180,7 @@ static void *send_thread(void *unused)
 
 static void *send_thread_udp(void *unused)
 {
-	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE];
+	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
 	uint8_t dstaddr[16];
 	struct ports_iter it;
 
@@ -194,8 +189,10 @@ static void *send_thread_udp(void *unused)
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_UDP);
 	if(target_gen_next(dstaddr) < 0)
 		return NULL;
-	rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
-	udp_modify2(UDP_HEADER(packet), 0); // we send empty packets
+	if(!banners) {
+		rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
+		udp_modify2(UDP_HEADER(packet), 0); // we send empty packets
+	}
 	ports_iter_begin(&ports, &it);
 
 	while(1) {
@@ -203,14 +200,25 @@ static void *send_thread_udp(void *unused)
 		if(ports_iter_next(&it) == 0) {
 			if(target_gen_next(dstaddr) < 0)
 				break; // no more targets
-			rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
+			if(!banners)
+				rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
 			ports_iter_begin(NULL, &it);
 			continue;
 		}
 
-		udp_modify(UDP_HEADER(packet), source_port==-1?source_port_rand():source_port, it.val);
-		udp_checksum(IP_FRAME(packet), UDP_HEADER(packet), 0);
-		rawsock_send(packet, sizeof(packet));
+		uint16_t dstport = it.val;
+		udp_modify(UDP_HEADER(packet), source_port==-1?source_port_rand():source_port, dstport);
+		unsigned int dlen = 0;
+		if(banners) {
+			const char *payload = banner_get_query(IP_TYPE_UDP, dstport, &dlen);
+			if(payload && dlen > 0)
+				memcpy(UDP_DATA(packet), payload, dlen);
+			rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE + dlen, dstaddr);
+			udp_modify2(UDP_HEADER(packet), dlen);
+		}
+
+		udp_checksum(IP_FRAME(packet), UDP_HEADER(packet), dlen);
+		rawsock_send(packet, FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + dlen);
 
 		// Rate control
 		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
@@ -271,15 +279,25 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 			if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
 				outdef.output_status(outfile, ts, csrcaddr, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
 		}
+		// Pass packet to responder
+		if(banners)
+			scan_responder_process(ts, len, packet);
 	} else {
-		// we got a packet back, that's already noteworthy enough
 		tcp_decode(TCP_HEADER(packet), &v, NULL);
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		outdef.output_status(outfile, ts, csrcaddr, v, v2, OUTPUT_STATUS_OPEN);
+		if(banners) {
+			unsigned int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE);
+			if(plen > 0) {
+				char temp[plen];
+				memcpy(temp, UDP_DATA(packet), plen);
+				banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
+				outdef.output_banner(outfile, ts, csrcaddr, v, temp, plen);
+			}
+		} else {
+			// We got an answer, that's already noteworthy enough
+			outdef.output_status(outfile, ts, csrcaddr, v, v2, OUTPUT_STATUS_OPEN);
+		}
 	}
-	// Pass packet to responder
-	if(banners)
-		scan_responder_process(ts, len, packet);
 
 	return;
 	perr: ;

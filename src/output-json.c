@@ -47,7 +47,7 @@ static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, uint16_t po
 	json_escape(buffer, sizeof(buffer), banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
-	svc = banner_service_type(port);
+	svc = banner_service_type(0x06, port); // TODO
 	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"tcp\", \"service\": {\"name\": \"%s\", \"banner\": \"%s\"}}]},\n",
 		addrstr, ts, port, svc ? svc : "", buffer
 	);

@@ -149,7 +149,7 @@ static void *send_thread(void *unused)
 		}
 
 		tcp_modify(TCP_HEADER(packet), source_port==-1?source_port_rand():source_port, it.val);
-		tcp_checksum_nodata(IP_FRAME(packet), TCP_HEADER(packet));
+		tcp_checksum(IP_FRAME(packet), TCP_HEADER(packet), 0);
 		rawsock_send(packet, sizeof(packet));
 
 		// Rate control

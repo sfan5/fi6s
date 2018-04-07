@@ -95,7 +95,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 			tcp_debug("> rst seq=%08x\n", rseqnum);
 		}
-		tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
+		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
 		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
 	} else if(TCP_HEADER(rpacket)->f_ack) {
 		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
@@ -117,7 +117,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 			TCP_HEADER(spacket)->f_rst = 1;
 			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
-			tcp_checksum_nodata(IP_FRAME(spacket), TCP_HEADER(spacket));
+			tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
 			rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
 			tcp_debug("> ack+rst seq=%08x ack=%08x\n", acknum, rseqnum);
 			return;

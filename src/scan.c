@@ -277,7 +277,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 			tcp_decode(TCP_HEADER(packet), &v, NULL);
 			rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
 			if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
-				outdef.output_status(outfile, ts, csrcaddr, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
+				outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
 		}
 		// Pass packet to responder
 		if(banners)
@@ -291,11 +291,11 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 				char temp[plen];
 				memcpy(temp, UDP_DATA(packet), plen);
 				banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
-				outdef.output_banner(outfile, ts, csrcaddr, v, temp, plen);
+				outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, temp, plen);
 			}
 		} else {
 			// We got an answer, that's already noteworthy enough
-			outdef.output_status(outfile, ts, csrcaddr, v, v2, OUTPUT_STATUS_OPEN);
+			outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, v2, OUTPUT_STATUS_OPEN);
 		}
 	}
 

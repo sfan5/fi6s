@@ -9,10 +9,15 @@ enum {
 	OUTPUT_STATUS_CLOSED,
 };
 
+enum {
+	OUTPUT_PROTO_TCP = 0,
+	OUTPUT_PROTO_UDP,
+};
+
 struct outputdef {
 	void (*begin)(FILE *);
-	void (*output_status)(FILE *, uint64_t /*ts*/, const uint8_t * /*addr*/, uint16_t /*port*/, uint8_t /* ttl */, int /*status*/);
-	void (*output_banner)(FILE *, uint64_t /*ts*/, const uint8_t * /*addr*/, uint16_t /*port*/, const char * /*banner*/, unsigned int /*bannerlen*/);
+	void (*output_status)(FILE *, uint64_t /*ts*/, const uint8_t * /*addr*/, int /*proto*/, uint16_t /*port*/, uint8_t /* ttl */, int /*status*/);
+	void (*output_banner)(FILE *, uint64_t /*ts*/, const uint8_t * /*addr*/, int /*proto*/, uint16_t /*port*/, const char * /*banner*/, unsigned int /*bannerlen*/);
 	void (*end)(FILE *);
 };
 

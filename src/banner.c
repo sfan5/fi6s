@@ -3,6 +3,7 @@
 
 #include "banner.h"
 #include "rawsock.h"
+#include "output.h"
 
 static const char *typemap_low[1024] = {
 	[21] = "ftp",
@@ -23,6 +24,11 @@ const char *banner_service_type(uint8_t ip_type, int port)
 		default:
 			return NULL;
 	}
+}
+
+uint8_t banner_outproto2ip_type(int output_proto)
+{
+	return output_proto == OUTPUT_PROTO_TCP ? IP_TYPE_TCP : IP_TYPE_UDP;
 }
 
 /****/

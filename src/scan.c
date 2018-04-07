@@ -14,11 +14,14 @@
 #include "util.h"
 #include "rawsock.h"
 #include "tcp.h"
+#include "udp.h"
 
 static uint8_t source_addr[16];
 static int source_port;
+//
 static struct ports ports;
-static int max_rate, show_closed, banners;
+static int max_rate, show_closed, banners, udp;
+//
 static FILE *outfile;
 static struct outputdef outdef;
 
@@ -27,25 +30,36 @@ static bool send_finished;
 
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
+static void *send_thread_udp(void *unused);
 static void *recv_thread(void *unused);
 static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 
 #define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )
 #define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
 #define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
+#define UDP_HEADER(buf) ( (struct udp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
 
 #if ATOMIC_INT_LOCK_FREE != 2
 #warning Non lock-free atomic types will severely affect performance.
 #endif
 
-void scan_settings(const uint8_t *_source_addr, int _source_port, const struct ports *_ports, int _max_rate, int _show_closed, int _banners, FILE *_outfile, const struct outputdef *_outdef)
+void scan_set_general(const struct ports *_ports, int _max_rate, int _show_closed, int _banners)
 {
-	memcpy(source_addr, _source_addr, 16);
-	source_port = _source_port;
 	memcpy(&ports, _ports, sizeof(struct ports));
 	max_rate = _max_rate == -1 ? INT_MAX : _max_rate - 1;
 	show_closed = _show_closed;
 	banners = _banners;
+}
+
+void scan_set_network(const uint8_t *_source_addr, int _source_port, int _ip_type)
+{
+	memcpy(source_addr, _source_addr, 16);
+	source_port = _source_port;
+	udp = _ip_type == IP_TYPE_UDP;
+}
+
+void scan_set_output(FILE *_outfile, const struct outputdef *_outdef)
+{
 	outfile = _outfile;
 	memcpy(&outdef, _outdef, sizeof(struct outputdef));
 }
@@ -61,17 +75,22 @@ int scan_main(const char *interface, int quiet)
 	if(banners) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
 			goto err;
-		// pick some high enough number if rate isn't limited
-		int count = max_rate == INT_MAX ? 65536 : (max_rate * BANNER_TIMEOUT / 1000);
-		if(tcp_state_init(count) < 0)
-			goto err;
+		if(!udp) {
+			// pick some high enough number if rate isn't limited
+			int count = max_rate == INT_MAX ? 65536 : (max_rate * BANNER_TIMEOUT / 1000);
+			if(tcp_state_init(count) < 0)
+				goto err;
+		} else {
+			banners = 0; // TODO
+			fprintf(stderr, "UDP banners unsupported\n", FINISH_WAIT_TIME);
+		}
 	}
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
 	if(source_port != -1)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
-	if(rawsock_setfilter(fflags, IP_TYPE_TCP, source_addr, source_port) < 0)
+	if(rawsock_setfilter(fflags, udp ? IP_TYPE_UDP : IP_TYPE_TCP, source_addr, source_port) < 0)
 		goto err;
 
 	// Write output file header
@@ -82,7 +101,7 @@ int scan_main(const char *interface, int quiet)
 	if(pthread_create(&tr, NULL, recv_thread, NULL) < 0)
 		goto err;
 	pthread_detach(tr);
-	if(pthread_create(&ts, NULL, send_thread, NULL) < 0)
+	if(pthread_create(&ts, NULL, udp ? send_thread_udp : send_thread, NULL) < 0)
 		goto err;
 	pthread_detach(ts);
 
@@ -120,7 +139,6 @@ int scan_main(const char *interface, int quiet)
 	r = 1;
 	goto ret;
 }
-
 
 static void *send_thread(void *unused)
 {
@@ -165,6 +183,48 @@ static void *send_thread(void *unused)
 	return NULL;
 }
 
+static void *send_thread_udp(void *unused)
+{
+	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE];
+	uint8_t dstaddr[16];
+	struct ports_iter it;
+
+	(void) unused;
+	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
+	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_UDP);
+	if(target_gen_next(dstaddr) < 0)
+		return NULL;
+	rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
+	udp_modify2(UDP_HEADER(packet), 0); // we send empty packets
+	ports_iter_begin(&ports, &it);
+
+	while(1) {
+		// Next port number (or target if ports exhausted)
+		if(ports_iter_next(&it) == 0) {
+			if(target_gen_next(dstaddr) < 0)
+				break; // no more targets
+			rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
+			ports_iter_begin(NULL, &it);
+			continue;
+		}
+
+		udp_modify(UDP_HEADER(packet), source_port==-1?source_port_rand():source_port, it.val);
+		udp_checksum(IP_FRAME(packet), UDP_HEADER(packet), 0);
+		rawsock_send(packet, sizeof(packet));
+
+		// Rate control
+		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
+			// FIXME: this doesn't seem like a good idea
+			do
+				usleep(1000);
+			while(atomic_load(&pkts_sent) != 0);
+		}
+	}
+
+	send_finished = true;
+	return NULL;
+}
+
 static void *recv_thread(void *unused)
 {
 	(void) unused;
@@ -194,16 +254,28 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
 		goto perr;
 	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);
-	if(v != IP_TYPE_TCP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
-		goto perr;
+	if(!udp) {
+		if(v != IP_TYPE_TCP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
+			goto perr;
+	} else {
+		if(v != IP_TYPE_UDP || len < FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE)
+			goto perr;
+	}
 
 	// Output stuff
-	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
-		int v2;
+	int v2;
+	if(!udp) {
+		if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
+			tcp_decode(TCP_HEADER(packet), &v, NULL);
+			rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
+			if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
+				outdef.output_status(outfile, ts, csrcaddr, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
+		}
+	} else {
+		// we got a packet back, that's already noteworthy enough
 		tcp_decode(TCP_HEADER(packet), &v, NULL);
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
-			outdef.output_status(outfile, ts, csrcaddr, v, v2, TCP_HEADER(packet)->f_syn?OUTPUT_STATUS_OPEN:OUTPUT_STATUS_CLOSED);
+		outdef.output_status(outfile, ts, csrcaddr, v, v2, OUTPUT_STATUS_OPEN);
 	}
 	// Pass packet to responder
 	if(banners)

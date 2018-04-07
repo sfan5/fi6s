@@ -35,13 +35,15 @@ int main(int argc, char *argv[])
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
+		{"udp", no_argument, 0, 'u'},
 		{0,0,0,0},
 	};
 
 	int echo_hosts = 0, randomize_hosts = 1,
 		ttl = 64, max_rate = -1,
 		source_port = -1, quiet = 0,
-		show_closed = 0, banners = 0;
+		show_closed = 0, banners = 0,
+		udp = 0;
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
 	char *interface = NULL;
 	struct ports ports;
@@ -53,7 +55,7 @@ int main(int argc, char *argv[])
 	memset(source_addr, 0xff, 16);
 	init_ports(&ports);
 	while(1) {
-		int c = getopt_long(argc, argv, "hp:o:q", long_options, NULL);
+		int c = getopt_long(argc, argv, "hp:o:qu", long_options, NULL);
 		if(c == -1)
 			break;
 		switch(c) {
@@ -155,6 +157,9 @@ int main(int argc, char *argv[])
 			case 'q':
 				quiet = 1;
 				break;
+			case 'u':
+				udp = 1;
+				break;
 			default:
 				break;
 		}
@@ -255,7 +260,9 @@ int main(int argc, char *argv[])
 			printf("Option %s is required but was not given.\n", missing);
 			r = 1;
 		} else {
-			scan_settings(source_addr, source_port, &ports, max_rate, show_closed, banners, outfile, outdef);
+			scan_set_general(&ports, max_rate, show_closed, banners);
+			scan_set_network(source_addr, source_port, udp ? IP_TYPE_UDP : IP_TYPE_TCP);
+			scan_set_output(outfile, outdef);
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
 	}

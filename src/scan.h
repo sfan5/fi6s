@@ -12,13 +12,12 @@ struct ports;
 #define BANNER_TIMEOUT   2500 // ms
 #define FIRST_SEQNUM 0xf0000000
 
-void scan_settings(
-	const uint8_t *source_addr, int source_port,
-	const struct ports *ports, int max_rate,
-	int show_closed, int banners,
-	FILE *outfile, const struct outputdef *outdef);
+void scan_set_general(const struct ports *ports, int max_rate, int show_closed, int banners);
+void scan_set_network(const uint8_t *source_addr, int source_port, int ip_type);
+void scan_set_output(FILE *outfile, const struct outputdef *outdef);
 int scan_main(const char *interface, int quiet);
 
+// Internal
 int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t source_port);
 void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket);
 void scan_responder_finish();

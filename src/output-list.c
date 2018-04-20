@@ -25,7 +25,7 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 	);
 }
 
-static void escaped(char *out, unsigned int outsize, const char* buf, unsigned int len)
+static void escaped(char *out, unsigned int outsize, const unsigned char* buf, unsigned int len)
 {
 	for(unsigned int i = 0; i < len; i++) {
 		int c = buf[i];
@@ -46,7 +46,7 @@ static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 
 	// output_banner() is called from a diff. thread, need to buffer output here
 	*buffer = '\0';
-	escaped(buffer, sizeof(buffer), banner, bannerlen);
+	escaped(buffer, sizeof(buffer), (unsigned char*)banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
 	svc = banner_service_type(banner_outproto2ip_type(proto), port);

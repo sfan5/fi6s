@@ -24,7 +24,7 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 	);
 }
 
-static void json_escape(char *out, unsigned int outsize, const char* buf, unsigned int len)
+static void json_escape(char *out, unsigned int outsize, const unsigned char* buf, unsigned int len)
 {
 	for(unsigned int i = 0; i < len; i++) {
 		int c = buf[i];
@@ -45,7 +45,7 @@ static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 
 	// use buffer so we can fprintf everything at once
 	*buffer = '\0';
-	json_escape(buffer, sizeof(buffer), banner, bannerlen);
+	json_escape(buffer, sizeof(buffer), (unsigned char*) banner, bannerlen);
 
 	ipv6_string(addrstr, addr);
 	temp = banner_service_type(banner_outproto2ip_type(proto), port);

@@ -149,11 +149,12 @@ static const char *get_query_udp(int port, unsigned int *len)
 
 /****/
 
-void postprocess_tcp(int port, char *banner, unsigned int *len);
-void postprocess_udp(int port, char *banner, unsigned int *len);
+void postprocess_tcp(int port, uchar *banner, unsigned int *len);
+void postprocess_udp(int port, uchar *banner, unsigned int *len);
 
-void banner_postprocess(uint8_t ip_type, int port, char *banner, unsigned int *len)
+void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
 {
+	uchar *banner = (uchar*) _banner;
 	switch(port) {
 
 #define BREAK_ERR_IF(expr) \
@@ -173,13 +174,15 @@ void banner_postprocess(uint8_t ip_type, int port, char *banner, unsigned int *l
 			uint16_t flags = (banner[off+2] << 8) | banner[off+3];
 			uint8_t rcode = (flags & 0xf);
 			if((flags & 0x8000) != 0x8000 || rcode != 0x0) {
+				const char *msg;
 				if(rcode == 4)
-					strncpy(banner, "-NOTIMPL-", 12);
+					msg = "-NOTIMPL-";
 				else if(rcode == 5)
-					strncpy(banner, "-REFUSED-", 12);
+					msg = "-REFUSED-";
 				else
-					strncpy(banner, "-SERVFAIL-", 12);
-				*len = strlen(banner);
+					msg = "-SERVFAIL-";
+				*len = strlen(msg);
+				memcpy(banner, msg, *len);
 				break;
 			}
 
@@ -218,15 +221,15 @@ void banner_postprocess(uint8_t ip_type, int port, char *banner, unsigned int *l
 		postprocess_udp(port, banner, len);
 }
 
-void postprocess_tcp(int port, char *banner, unsigned int *len)
+void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 {
 	switch(port) {
 		case 22: {
 			// cut off after identification string or first NUL
-			char *end;
-			end = (char*) memmem(banner, *len, "\r\n", 2);
+			uchar *end;
+			end = (uchar*) memmem(banner, *len, "\r\n", 2);
 			if(!end)
-				end = (char*) memchr(banner, 0, *len);
+				end = (uchar*) memchr(banner, 0, *len);
 			if(end)
 				*len = end - banner;
 			break;
@@ -235,9 +238,9 @@ void postprocess_tcp(int port, char *banner, unsigned int *len)
 		case 80:
 		case 8080: {
 			// cut off after headers
-			char *end = (char*) memmem(banner, *len, "\r\n\r\n", 4);
+			uchar *end = (uchar*) memmem(banner, *len, "\r\n\r\n", 4);
 			if(!end)
-				end = (char*) memmem(banner, *len, "\n\n", 2);
+				end = (uchar*) memmem(banner, *len, "\n\n", 2);
 			if(end)
 				*len = end - banner;
 			break;
@@ -258,8 +261,8 @@ void postprocess_tcp(int port, char *banner, unsigned int *len)
 	}
 #define WRITEHEX(buf, max) \
 	for(int _i = 0; _i < max; _i++) \
-		WRITEF("%02x", (int) ((unsigned char*) buf)[_i])
-static int ikev2_process_header(char *header, char *extra)
+		WRITEF("%02x", (int) (buf)[_i])
+static int ikev2_process_header(uchar *header, char *extra)
 {
 	BREAK_ERR_IF((header[17] & 0xf0) != 0x20) // version != 2.x
 	BREAK_ERR_IF((header[19] & 0x28) != 0x20) // flags & (I | R) != R
@@ -272,7 +275,7 @@ static int ikev2_process_header(char *header, char *extra)
 
 	return 0;
 }
-static int ikev2_process_payload(uint8_t type, char *buffer, unsigned int len, char *extra)
+static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, char *extra)
 {
 	switch(type) {
 		case 33: // Security Association
@@ -302,10 +305,12 @@ static int ikev2_process_payload(uint8_t type, char *buffer, unsigned int len, c
 				WRITEF("INVALID_SYNTAX")
 			else if(message_type == 14)
 				WRITEF("NO_PROPOSAL_CHOSEN")
+			else if(message_type == 24)
+				WRITEF("AUTHENTICATION_FAILED")
 			else if(message_type == 16388)
 				WRITEF("NAT_DETECTION_SOURCE_IP")
 			else if(message_type == 16389)
-				WRITEF("NAT_DETECTION_SOURCE_IP")
+				WRITEF("NAT_DETECTION_DESTINATION_IP")
 			else if(message_type == 16390)
 				WRITEF("COOKIE %d octets", len - 4)
 			else if(message_type == 16404)
@@ -334,7 +339,7 @@ static int ikev2_process_payload(uint8_t type, char *buffer, unsigned int len, c
 #undef WRITEF
 #undef WRITEHEX
 
-void postprocess_udp(int port, char *banner, unsigned int *len)
+void postprocess_udp(int port, uchar *banner, unsigned int *len)
 {
 	switch(port) {
 

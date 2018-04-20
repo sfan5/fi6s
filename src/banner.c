@@ -130,7 +130,7 @@ static const char *get_query_udp(int port, unsigned int *len)
 		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02"
 
 		// Nonce (40)
 		"\x00\x00\x00\x14" // no next payload, length: 20
@@ -248,8 +248,128 @@ void postprocess_tcp(int port, char *banner, unsigned int *len)
 	}
 }
 
+#define IKEV2_TEXT_BUFFER_SIZE 1024
+#define BREAK_ERR_IF(expr) \
+	if(expr) { return -1; }
+#define WRITEF(...) { \
+		int _off = strlen(extra), _space = IKEV2_TEXT_BUFFER_SIZE - _off; \
+		if (_space > 0) \
+			snprintf(&extra[_off], _space, __VA_ARGS__); \
+	}
+#define WRITEHEX(buf, max) \
+	for(int _i = 0; _i < max; _i++) \
+		WRITEF("%02x", (int) ((unsigned char*) buf)[_i])
+static int ikev2_process_header(char *header, char *extra)
+{
+	BREAK_ERR_IF((header[17] & 0xf0) != 0x20) // version != 2.x
+	BREAK_ERR_IF((header[19] & 0x28) != 0x20) // flags & (I | R) != R
+
+	WRITEF("Responder SPI: ")
+	WRITEHEX(&header[8], 8)
+	WRITEF("\n")
+
+	WRITEF("Version: 2.%d\n", header[17] & 0x0f)
+
+	return 0;
+}
+static int ikev2_process_payload(uint8_t type, char *buffer, unsigned int len, char *extra)
+{
+	switch(type) {
+		case 33: // Security Association
+		case 34: // Key Exchange
+			return 0;
+
+		case 38: { // Certificate Request
+			BREAK_ERR_IF(1 > len)
+			uint8_t cert_type = buffer[0];
+			if(cert_type != 4) // X.509 Certificate - Signature
+				break;
+			BREAK_ERR_IF(1 + 20 > len)
+			WRITEF("Certificate Request: X.509 ")
+			WRITEHEX(&buffer[1], 20)
+			WRITEF("\n")
+			break;
+		}
+		case 40: // Nonce
+			BREAK_ERR_IF(len == 0)
+			WRITEF("Nonce: %d octets\n", len)
+			break;
+		case 41: { // Notify
+			BREAK_ERR_IF(4 > len)
+			uint16_t message_type = buffer[2] << 8 | buffer[3];
+			WRITEF("Notify %s: ", message_type < 16384 ? "Error" : "Status")
+			if(message_type == 7)
+				WRITEF("INVALID_SYNTAX")
+			else if(message_type == 14)
+				WRITEF("NO_PROPOSAL_CHOSEN")
+			else if(message_type == 16388)
+				WRITEF("NAT_DETECTION_SOURCE_IP")
+			else if(message_type == 16389)
+				WRITEF("NAT_DETECTION_SOURCE_IP")
+			else if(message_type == 16390)
+				WRITEF("COOKIE %d octets", len - 4)
+			else if(message_type == 16404)
+				WRITEF("MULTIPLE_AUTH_SUPPORTED")
+			else if(message_type == 16430)
+				WRITEF("IKEV2_FRAGMENTATION_SUPPORTED")
+			else
+				WRITEF("unknown (%d)", message_type)
+			WRITEF("\n")
+			break;
+		}
+
+		default:
+			WRITEF("Unknown Payload (%d)\n", type)
+			break;
+	}
+	return 0;
+}
+#undef BREAK_ERR_IF
+#undef WRITEF
+#undef WRITEHEX
+
 void postprocess_udp(int port, char *banner, unsigned int *len)
 {
-	(void) port; (void) banner; (void) len;
-	// do nothing
+	switch(port) {
+
+#define BREAK_ERR_IF(expr) \
+	if(expr) { *len = 0; break; }
+		case 500: {
+			char extra[IKEV2_TEXT_BUFFER_SIZE]; // TODO: this sucks
+			*extra = '\0';
+
+			int off = 0, r;
+			BREAK_ERR_IF(off + 28 > *len)
+			r = ikev2_process_header(&banner[off], extra);
+			BREAK_ERR_IF(r == -1)
+
+			uint8_t next_payload = banner[off+16];
+			off += 28;
+			do {
+				BREAK_ERR_IF(off + 4 > *len)
+				uint16_t payload_length = banner[off+2] << 8 | banner[off+3];
+				BREAK_ERR_IF(payload_length < 4)
+				BREAK_ERR_IF(off + payload_length > *len)
+
+				r = ikev2_process_payload(next_payload, &banner[off+4], payload_length - 4, extra);
+				BREAK_ERR_IF(r == -1)
+
+				next_payload = banner[off];
+				off += payload_length;
+			} while(next_payload != 0);
+
+			int final_len = strlen(extra);
+			if(final_len > *len)
+				memcpy(banner, extra, *len);
+			else
+				memcpy(banner, extra, final_len);
+			*len = final_len;
+			break;
+		}
+#undef BREAK_ERR_IF
+
+
+		default:
+			break; // do nothing
+	}
 }

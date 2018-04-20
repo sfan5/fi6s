@@ -248,7 +248,7 @@ void postprocess_tcp(int port, char *banner, unsigned int *len)
 	}
 }
 
-#define IKEV2_TEXT_BUFFER_SIZE 1024
+#define IKEV2_TEXT_BUFFER_SIZE 1024 // must be <= BANNER_MAX_LENGTH
 #define BREAK_ERR_IF(expr) \
 	if(expr) { return -1; }
 #define WRITEF(...) { \
@@ -277,7 +277,7 @@ static int ikev2_process_payload(uint8_t type, char *buffer, unsigned int len, c
 	switch(type) {
 		case 33: // Security Association
 		case 34: // Key Exchange
-			return 0;
+			break;
 
 		case 38: { // Certificate Request
 			BREAK_ERR_IF(1 > len)
@@ -314,6 +314,12 @@ static int ikev2_process_payload(uint8_t type, char *buffer, unsigned int len, c
 				WRITEF("IKEV2_FRAGMENTATION_SUPPORTED")
 			else
 				WRITEF("unknown (%d)", message_type)
+			WRITEF("\n")
+			break;
+		}
+		case 43: { // Vendor ID
+			WRITEF("Vendor ID: ")
+			WRITEHEX(buffer, len)
 			WRITEF("\n")
 			break;
 		}
@@ -357,12 +363,11 @@ void postprocess_udp(int port, char *banner, unsigned int *len)
 				next_payload = banner[off];
 				off += payload_length;
 			} while(next_payload != 0);
+			if(*len == 0)
+				break; // came here from BREAK_ERR_IF in above do-while
 
 			int final_len = strlen(extra);
-			if(final_len > *len)
-				memcpy(banner, extra, *len);
-			else
-				memcpy(banner, extra, final_len);
+			memcpy(banner, extra, final_len);
 			*len = final_len;
 			break;
 		}

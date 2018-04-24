@@ -20,6 +20,8 @@ const char *banner_service_type(uint8_t ip_type, int port)
 	if(port < 1024)
 		return typemap_low[port];
 	switch(port) {
+		case 4500:
+			return typemap_low[500];
 		case 8080:
 			return typemap_low[80];
 		default:
@@ -94,6 +96,7 @@ static const char *get_query_tcp(int port, unsigned int *len)
 static const char *get_query_udp(int port, unsigned int *len)
 {
 	static const char ike[] =
+		"\x00\x00\x00\x00" // prefix (4500 only)
 		"\x11\x22\x33\x44\x55\x66\x77\x88" // SA Initiator's SPI
 		"\x00\x00\x00\x00\x00\x00\x00\x00" // SA Responder's SPI (empty)
 		"\x21" // Next payload: 33
@@ -140,8 +143,11 @@ static const char *get_query_udp(int port, unsigned int *len)
 
 	switch(port) {
 		case 500:
-			*len = sizeof(ike) - 1; // mind the null byte!
-			return ike;
+		case 4500: {
+			int skip = port == 4500 ? 0 : 4;
+			*len = sizeof(ike) - skip - 1; // mind the null byte!
+			return &ike[skip];
+		}
 		default:
 			return NULL;
 	}
@@ -345,11 +351,13 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len)
 
 #define BREAK_ERR_IF(expr) \
 	if(expr) { *len = 0; break; }
-		case 500: {
+		case 500:
+		case 4500: {
 			char extra[IKEV2_TEXT_BUFFER_SIZE]; // TODO: this sucks
 			*extra = '\0';
 
-			int off = 0, r;
+			int off, r;
+			off = port == 4500 ? 4 : 0;
 			BREAK_ERR_IF(off + 28 > *len)
 			r = ikev2_process_header(&banner[off], extra);
 			BREAK_ERR_IF(r == -1)

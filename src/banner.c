@@ -158,67 +158,20 @@ static const char *get_query_udp(int port, unsigned int *len)
 void postprocess_tcp(int port, uchar *banner, unsigned int *len);
 void postprocess_udp(int port, uchar *banner, unsigned int *len);
 
+// protocols:
+static int dns_process(int off, uchar *banner, unsigned int *len);
+static int ikev2_process(int off, uchar *banner, unsigned int *len);
+
 void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
 {
 	uchar *banner = (uchar*) _banner;
 	switch(port) {
-
-#define BREAK_ERR_IF(expr) \
-	if(expr) { *len = 0; break; }
-#define SKIP_LABELS() \
-	while(off < *len) { \
-		if((banner[off] & 0xc0) == 0xc0) /* message compression */ \
-			{ off += 2; break; } \
-		else if(banner[off] > 0) /* ordinary label */ \
-			{ off += 1 + banner[off]; } \
-		else /* terminating zero-length label */ \
-			{ off += 1; break; } \
-	}
 		case 53: {
-			int off = ip_type == IP_TYPE_UDP ? 0 : 2; // skip length field if required
-			BREAK_ERR_IF(off + 12 > *len)
-			uint16_t flags = (banner[off+2] << 8) | banner[off+3];
-			uint8_t rcode = (flags & 0xf);
-			if((flags & 0x8000) != 0x8000 || rcode != 0x0) {
-				const char *msg;
-				if(rcode == 4)
-					msg = "-NOTIMPL-";
-				else if(rcode == 5)
-					msg = "-REFUSED-";
-				else
-					msg = "-SERVFAIL-";
-				*len = strlen(msg);
-				memcpy(banner, msg, *len);
-				break;
-			}
-
-			uint16_t qdcount = (banner[off+4] << 8) | banner[off+5];
-			uint16_t ancount = (banner[off+6] << 8) | banner[off+7];
-			BREAK_ERR_IF(qdcount != 1 || ancount < 1)
-			off += 12;
-			// skip query
-			SKIP_LABELS()
-			off += 4;
-			BREAK_ERR_IF(off > *len)
-
-			// parse answer record
-			SKIP_LABELS()
-			BREAK_ERR_IF(off + 10 > *len)
-			uint16_t rr_type = (banner[off] << 8) | banner[off+1];
-			uint16_t rr_rdlength = (banner[off+8] << 8) | banner[off+9];
-			BREAK_ERR_IF(rr_type != 0x0010 /* TXT */)
-			BREAK_ERR_IF(rr_rdlength < 2)
-			off += 10;
-			BREAK_ERR_IF(off + rr_rdlength > *len)
-
-			// return just the TXT record contents
-			memmove(banner, &banner[off+1], rr_rdlength - 1);
-			*len = rr_rdlength - 1;
+			int r = dns_process(ip_type == IP_TYPE_UDP ? 0 : 2, banner, len);
+			if(r == -1)
+				*len = 0;
 			break;
 		}
-#undef BREAK_ERR_IF
-#undef SKIP_LABELS
-
 	}
 
 	if(ip_type == IP_TYPE_TCP)
@@ -257,8 +210,97 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 	}
 }
 
+void postprocess_udp(int port, uchar *banner, unsigned int *len)
+{
+	switch(port) {
+		case 500:
+		case 4500: {
+			int r = ikev2_process(port == 4500 ? 4 : 0, banner, len);
+			if(r == -1)
+				*len = 0;
+			break;
+		}
+		default:
+			break; // do nothing
+	}
+}
+
+/** DNS **/
+
+#define ERR_IF(expr) \
+	if(expr) { return -1; }
+static int dns_skip_labels(int *_off, uchar *banner, unsigned int len)
+{
+	int off = *_off;
+	while(off < len) {
+		uchar c = banner[off];
+		if((c & 0xc0) == 0xc0) { /* message compression */
+			off += 2;
+			break;
+		} else if(c > 0) { /* ordinary label */
+			ERR_IF(c >= 64) // too long
+			off += 1 + banner[off];
+		} else { /* terminating zero-length label */
+			off += 1;
+			break;
+		}
+	}
+	*_off = off;
+	return 0;
+}
+
+static int dns_process(int off, uchar *banner, unsigned int *len)
+{
+	int r;
+
+	ERR_IF(off + 12 > *len)
+	uint16_t flags = (banner[off+2] << 8) | banner[off+3];
+	uint8_t rcode = (flags & 0xf);
+	if((flags & 0x8000) != 0x8000 || rcode != 0x0) {
+		const char *msg;
+		if(rcode == 4)
+			msg = "-NOTIMPL-";
+		else if(rcode == 5)
+			msg = "-REFUSED-";
+		else
+			msg = "-SERVFAIL-";
+		*len = strlen(msg);
+		memcpy(banner, msg, *len);
+		return 0;
+	}
+
+	uint16_t qdcount = (banner[off+4] << 8) | banner[off+5];
+	uint16_t ancount = (banner[off+6] << 8) | banner[off+7];
+	ERR_IF(qdcount != 1 || ancount < 1)
+	off += 12;
+	// skip query
+	r = dns_skip_labels(&off, banner, *len);
+	ERR_IF(r == -1)
+	off += 4;
+	ERR_IF(off > *len)
+
+	// parse answer record
+	r = dns_skip_labels(&off, banner, *len);
+	ERR_IF(r == -1)
+	ERR_IF(off + 10 > *len)
+	uint16_t rr_type = (banner[off] << 8) | banner[off+1];
+	uint16_t rr_rdlength = (banner[off+8] << 8) | banner[off+9];
+	ERR_IF(rr_type != 0x0010 /* TXT */)
+	ERR_IF(rr_rdlength < 2)
+	off += 10;
+	ERR_IF(off + rr_rdlength > *len)
+
+	// return just the TXT record contents
+	memmove(banner, &banner[off+1], rr_rdlength - 1);
+	*len = rr_rdlength - 1;
+	return 0;
+}
+#undef ERR_IF
+
+/** IKEv2 **/
+
 #define IKEV2_TEXT_BUFFER_SIZE 1024 // must be <= BANNER_MAX_LENGTH
-#define BREAK_ERR_IF(expr) \
+#define ERR_IF(expr) \
 	if(expr) { return -1; }
 #define WRITEF(...) { \
 		int _off = strlen(extra), _space = IKEV2_TEXT_BUFFER_SIZE - _off; \
@@ -270,8 +312,8 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 		WRITEF("%02x", (int) (buf)[_i])
 static int ikev2_process_header(uchar *header, char *extra)
 {
-	BREAK_ERR_IF((header[17] & 0xf0) != 0x20) // version != 2.x
-	BREAK_ERR_IF((header[19] & 0x28) != 0x20) // flags & (I | R) != R
+	ERR_IF((header[17] & 0xf0) != 0x20) // version != 2.x
+	ERR_IF((header[19] & 0x28) != 0x20) // flags & (I | R) != R
 
 	WRITEF("Responder SPI: ")
 	WRITEHEX(&header[8], 8)
@@ -281,6 +323,7 @@ static int ikev2_process_header(uchar *header, char *extra)
 
 	return 0;
 }
+
 static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, char *extra)
 {
 	switch(type) {
@@ -289,22 +332,22 @@ static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, 
 			break;
 
 		case 38: { // Certificate Request
-			BREAK_ERR_IF(1 > len)
+			ERR_IF(1 > len)
 			uint8_t cert_type = buffer[0];
 			if(cert_type != 4) // X.509 Certificate - Signature
 				break;
-			BREAK_ERR_IF(1 + 20 > len)
+			ERR_IF(1 + 20 > len)
 			WRITEF("Certificate Request: X.509 ")
 			WRITEHEX(&buffer[1], 20)
 			WRITEF("\n")
 			break;
 		}
 		case 40: // Nonce
-			BREAK_ERR_IF(len == 0)
+			ERR_IF(len == 0)
 			WRITEF("Nonce: %d octets\n", len)
 			break;
 		case 41: { // Notify
-			BREAK_ERR_IF(4 > len)
+			ERR_IF(4 > len)
 			uint16_t message_type = buffer[2] << 8 | buffer[3];
 			WRITEF("Notify %s: ", message_type < 16384 ? "Error" : "Status")
 			if(message_type == 7)
@@ -341,53 +384,37 @@ static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, 
 	}
 	return 0;
 }
+
+static int ikev2_process(int off, uchar *banner, unsigned int *len)
+{
+	char extra[IKEV2_TEXT_BUFFER_SIZE]; // temporary buffer to hold our output
+	*extra = '\0';
+
+	int r;
+	ERR_IF(off + 28 > *len)
+	r = ikev2_process_header(&banner[off], extra);
+	ERR_IF(r == -1)
+
+	uint8_t next_payload = banner[off+16];
+	off += 28;
+	do {
+		ERR_IF(off + 4 > *len)
+		uint16_t payload_length = banner[off+2] << 8 | banner[off+3];
+		ERR_IF(payload_length < 4)
+		ERR_IF(off + payload_length > *len)
+
+		r = ikev2_process_payload(next_payload, &banner[off+4], payload_length - 4, extra);
+		ERR_IF(r == -1)
+
+		next_payload = banner[off];
+		off += payload_length;
+	} while(next_payload != 0);
+
+	int final_len = strlen(extra);
+	memcpy(banner, extra, final_len);
+	*len = final_len;
+	return 0;
+}
 #undef BREAK_ERR_IF
 #undef WRITEF
 #undef WRITEHEX
-
-void postprocess_udp(int port, uchar *banner, unsigned int *len)
-{
-	switch(port) {
-
-#define BREAK_ERR_IF(expr) \
-	if(expr) { *len = 0; break; }
-		case 500:
-		case 4500: {
-			char extra[IKEV2_TEXT_BUFFER_SIZE]; // TODO: this sucks
-			*extra = '\0';
-
-			int off, r;
-			off = port == 4500 ? 4 : 0;
-			BREAK_ERR_IF(off + 28 > *len)
-			r = ikev2_process_header(&banner[off], extra);
-			BREAK_ERR_IF(r == -1)
-
-			uint8_t next_payload = banner[off+16];
-			off += 28;
-			do {
-				BREAK_ERR_IF(off + 4 > *len)
-				uint16_t payload_length = banner[off+2] << 8 | banner[off+3];
-				BREAK_ERR_IF(payload_length < 4)
-				BREAK_ERR_IF(off + payload_length > *len)
-
-				r = ikev2_process_payload(next_payload, &banner[off+4], payload_length - 4, extra);
-				BREAK_ERR_IF(r == -1)
-
-				next_payload = banner[off];
-				off += payload_length;
-			} while(next_payload != 0);
-			if(*len == 0)
-				break; // came here from BREAK_ERR_IF in above do-while
-
-			int final_len = strlen(extra);
-			memcpy(banner, extra, final_len);
-			*len = final_len;
-			break;
-		}
-#undef BREAK_ERR_IF
-
-
-		default:
-			break; // do nothing
-	}
-}

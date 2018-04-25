@@ -80,16 +80,13 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		case 21:
 			*len = strlen(ftp);
 			return ftp;
-		case 22:
-		case 23:
-			*len = 0;
-			return "";
 		case 80:
 		case 8080:
 			*len = strlen(http);
 			return http;
 		default:
-			return NULL;
+			*len = 0; // send nothing
+			return "";
 	}
 }
 

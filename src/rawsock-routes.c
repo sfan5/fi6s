@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 // pcap.h breaks if you don't define these:
 typedef unsigned char u_char;
 typedef unsigned short u_short;
@@ -120,6 +121,8 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip)
 	if(sock == -1)
 		return -1;
 	if(connect(sock, (struct sockaddr*) dest, sizeof(struct sockaddr_in6)) == -1) {
+		if(errno == ENETUNREACH || errno == EAFNOSUPPORT)
+			fprintf(stderr, "Warning: Your machine does not seem to have any IPv6 connectivity\n");
 		close(sock);
 		return -1;
 	}

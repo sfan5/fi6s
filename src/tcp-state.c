@@ -32,7 +32,7 @@ struct tcp_state {
 
 
 // There are two threads that deal with TCP states:
-// - The scan thread calls _create and _find_and_push
+// - The scan thread calls _create, _push and _add_seqnum
 // - The tcp thread calls _next_expired, _destroy and the _get methods
 static pthread_mutex_t states_lock;
 
@@ -40,8 +40,8 @@ static struct tcp_state *states;
 static tcp_state_id states_count;
 
 // !!! The methods below don't do locking !!!
-static int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id);
-static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum);
+static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id);
+static void internal_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum);
 
 static inline uint64_t monotonic_ms(void);
 
@@ -88,7 +88,7 @@ tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t
 	return id;
 }
 
-static int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id)
+static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id)
 {
 	for(tcp_state_id id = 0; id < states_count; id++) {
 		if(states[id].srcport == srcport && !memcmp(states[id].srcaddr, srcaddr, 16)) {
@@ -99,7 +99,7 @@ static int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id
 	return 0;
 }
 
-static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum)
+static void internal_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum)
 {
 	struct tcp_state *s = &states[id];
 	if(seqnum < s->first_rseqnum) // pretend seqnum wraparound doesn't exist
@@ -115,17 +115,17 @@ static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uin
 		s->max_rseqnum = seqnum + length;
 }
 
-int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
+int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
 	void *data, unsigned int length, uint32_t seqnum)
 {
 	tcp_state_id id;
 	int r = 1;
 	pthread_mutex_lock(&states_lock);
-	if(!tcp_state_find(srcaddr, srcport, &id)) {
+	if(!internal_find(srcaddr, srcport, &id)) {
 		r = 0;
 		goto ret;
 	}
-	tcp_state_push(id, data, length, seqnum);
+	internal_push(id, data, length, seqnum);
 
 	ret:
 	pthread_mutex_unlock(&states_lock);
@@ -138,7 +138,7 @@ int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
 	tcp_state_id id;
 	int r = 1;
 	pthread_mutex_lock(&states_lock);
-	if(!tcp_state_find(srcaddr, srcport, &id)) {
+	if(!internal_find(srcaddr, srcport, &id)) {
 		r = 0;
 		goto ret;
 	}

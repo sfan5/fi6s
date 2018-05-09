@@ -43,7 +43,7 @@ void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknu
 int tcp_state_init(int count);
 tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
 	uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum); // called on SYN-ACK
-int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
+int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
 	void *data, unsigned int length,
 	uint32_t seqnum); // called whenever data is received
 int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,

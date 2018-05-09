@@ -69,7 +69,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 		// push data into session buffer
 		tcp_debug("< seqnum = %08x got data\n", rseqnum);
-		int ok = tcp_state_find_and_push(rsrcaddr, rport, TCP_DATA(rpacket, data_offset), plen, rseqnum);
+		int ok = tcp_state_push(rsrcaddr, rport, TCP_DATA(rpacket, data_offset), plen, rseqnum);
 		if(!ok)
 			return;
 

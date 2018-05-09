@@ -11,20 +11,32 @@
 #define TCP_BUFFER_LEN BANNER_MAX_LENGTH
 
 struct tcp_state {
+	// remote endpoint
 	uint8_t srcaddr[16];
 	uint16_t srcport; // == 0 indicates free entry
 
-	uint64_t creation_time, saved_timestamp;
+	// timestamps
+	uint64_t creation_time; // monotonic, in ms
+	uint64_t saved_timestamp;
+
+	// remote sequence numbers
 	uint32_t first_seqnum; // == <seqnum of syn-ack> + 1
 	uint32_t max_seqnum; // highest seen (seqnum + payload len)
+
+	// received data
 	char buffer[TCP_BUFFER_LEN];
 };
 
+
+// There are two threads that deal with TCP states:
+// - The scan thread calls _create and _find_and_push
+// - The tcp thread calls _next_expired, _destroy and the _get methods
 static pthread_mutex_t states_lock;
+
 static struct tcp_state *states;
 static tcp_state_id states_count;
 
-// !!! Below methods don't do locking !!!
+// !!! The methods below don't do locking !!!
 static int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id);
 static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum);
 
@@ -119,7 +131,7 @@ int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
 
 void *tcp_state_get_buffer(tcp_state_id id, unsigned int *length)
 {
-	// no locking because this method is read-only
+	// no locking (read-only)
 	struct tcp_state *s = &states[id];
 	*length = s->max_seqnum - s->first_seqnum;
 	return s->buffer;
@@ -127,13 +139,13 @@ void *tcp_state_get_buffer(tcp_state_id id, unsigned int *length)
 
 uint64_t tcp_state_get_timestamp(tcp_state_id id)
 {
-	// no locking because this method is read-only
+	// no locking (read-only)
 	return states[id].saved_timestamp;
 }
 
 const uint8_t *tcp_state_get_remote(tcp_state_id id, uint16_t *port)
 {
-	// no locking because this method is read-only
+	// no locking (read-only)
 	struct tcp_state *s = &states[id];
 	*port = s->srcport;
 	return s->srcaddr;
@@ -142,7 +154,7 @@ const uint8_t *tcp_state_get_remote(tcp_state_id id, uint16_t *port)
 
 int tcp_state_next_expired(int timeout, tcp_state_id *out_id)
 {
-	// no locking because this method is read-only
+	// no locking (read-only)
 	uint64_t lower = monotonic_ms() - timeout;
 	for(tcp_state_id id = 0; id < states_count; id++) {
 		if(states[id].srcport == 0)

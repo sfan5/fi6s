@@ -71,22 +71,26 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_debug("< seqnum = %08x got data\n", rseqnum);
 		int ok = tcp_state_find_and_push(rsrcaddr, rport, TCP_DATA(rpacket, data_offset), plen, rseqnum);
 
-		if(!TCP_HEADER(rpacket)->f_ack)
-			return; // FIXME: we should keep track of our own seqnums
+		// TODO: read RFC to find out what's up with this
+		const int x = TCP_HEADER(rpacket)->f_fin ? 1 : 0;
+
+		uint32_t lseqnum;
+		if(!tcp_state_add_seqnum(rsrcaddr, rport, &lseqnum, x))
+			return;
 		if(ok) {
 			// send ack(+fin)
 			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-			tcp_make_ack(TCP_HEADER(spacket), acknum, rseqnum + plen);
+			tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum + plen + x);
 			TCP_HEADER(spacket)->f_fin = TCP_HEADER(rpacket)->f_fin;
 			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
 			tcp_debug("> ack%s seq=%08x ack=%08x\n",
-				TCP_HEADER(spacket)->f_fin?"+fin":"", acknum, rseqnum);
+				TCP_HEADER(spacket)->f_fin?"+fin":"", lseqnum, rseqnum + plen + x);
 		} else {
 			// send rst
 			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-			tcp_make_rst(TCP_HEADER(spacket), acknum);
-			tcp_modify(TCP_HEADER(spacket),responder.source_port, rport);
+			tcp_make_rst(TCP_HEADER(spacket), lseqnum);
+			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
 			tcp_debug("> rst seq=%08x\n", rseqnum);
 		}
@@ -99,7 +103,8 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		if(!TCP_HEADER(rpacket)->f_syn)
 			return;
 
-		if(acknum != FIRST_SEQNUM + 1)
+		uint32_t lseqnum = FIRST_SEQNUM + 1; // expected acknum for the initial answer
+		if(acknum != lseqnum)
 			return;
 		rseqnum += 1; // syn-ack increases seqnum by one
 
@@ -108,19 +113,19 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		if(!payload) {
 			// we don't actually want to grab a banner, send an RST
 			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-			tcp_make_ack(TCP_HEADER(spacket), acknum, rseqnum);
+			tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum);
 			TCP_HEADER(spacket)->f_rst = 1;
 			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
 			tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
 			rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
-			tcp_debug("> ack+rst seq=%08x ack=%08x\n", acknum, rseqnum);
+			tcp_debug("> ack+rst seq=%08x ack=%08x\n", lseqnum, rseqnum);
 			return;
 		}
 
 		// send ack(+psh) with banner query
 		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE + plen, rsrcaddr);
-		tcp_make_ack(TCP_HEADER(spacket), FIRST_SEQNUM + 1, rseqnum);
+		tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum);
 		TCP_HEADER(spacket)->f_psh = (plen > 0);
 		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 		memcpy(TCP_DATA(spacket, TCP_HEADER_SIZE), payload, plen);
@@ -128,10 +133,11 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), plen);
 		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + plen);
 		tcp_debug("> ack%s seq=%08x ack=%08x\n",
-			TCP_HEADER(spacket)->f_psh?"+psh":"", FIRST_SEQNUM + 1, rseqnum);
+			TCP_HEADER(spacket)->f_psh?"+psh":"", lseqnum, rseqnum);
 
 		// register as new tcp session
-		tcp_state_create(rsrcaddr, rport, ts, rseqnum - 1);
+		lseqnum += plen;
+		tcp_state_create(rsrcaddr, rport, ts, lseqnum, rseqnum - 1);
 	}
 }
 
@@ -139,7 +145,7 @@ static void *tcp_thread(void *unused)
 {
 	(void) unused;
 	do {
-		// TODO: handle case of thread being behind schedule
+		// TODO: need to handle being behind schedule?
 		usleep(BANNER_TIMEOUT * 1000 / 2);
 
 		tcp_state_id id;

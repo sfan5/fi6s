@@ -19,9 +19,12 @@ struct tcp_state {
 	uint64_t creation_time; // monotonic, in ms
 	uint64_t saved_timestamp;
 
+	// local sequence numbers
+	uint32_t next_lseqnum; // seqnum of next packet we would be sending
+
 	// remote sequence numbers
-	uint32_t first_seqnum; // == <seqnum of syn-ack> + 1
-	uint32_t max_seqnum; // highest seen (seqnum + payload len)
+	uint32_t first_rseqnum; // == <seqnum of syn-ack> + 1
+	uint32_t max_rseqnum; // highest seen of (seqnum + payload len)
 
 	// received data
 	char buffer[TCP_BUFFER_LEN];
@@ -55,7 +58,7 @@ int tcp_state_init(int count)
 	return 0;
 }
 
-tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uint32_t first_seqnum)
+tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum)
 {
 	tcp_state_id id;
 	pthread_mutex_lock(&states_lock);
@@ -76,8 +79,9 @@ tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t
 	// rest of initialization:
 	memcpy(s->srcaddr, srcaddr, 16);
 	s->saved_timestamp = ts;
-	s->first_seqnum = first_seqnum + 1;
-	s->max_seqnum = s->first_seqnum;
+	s->next_lseqnum = next_lseqnum;
+	s->first_rseqnum = first_rseqnum + 1;
+	s->max_rseqnum = s->first_rseqnum;
 #ifndef NDEBUG
 	memset(s->buffer, 0, sizeof(s->buffer));
 #endif
@@ -98,17 +102,17 @@ static int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id
 static void tcp_state_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum)
 {
 	struct tcp_state *s = &states[id];
-	if(seqnum < s->first_seqnum) // pretend seqnum wraparound doesn't exist
+	if(seqnum < s->first_rseqnum) // pretend seqnum wraparound doesn't exist
 		return;
 
-	unsigned int offset = seqnum - s->first_seqnum;
+	unsigned int offset = seqnum - s->first_rseqnum;
 	if(offset > TCP_BUFFER_LEN)
 		return;
 	else if(offset + length > TCP_BUFFER_LEN)
 		length = TCP_BUFFER_LEN - offset;
 	memcpy(&s->buffer[offset], data, length);
-	if(seqnum + length > s->max_seqnum)
-		s->max_seqnum = seqnum + length; 
+	if(seqnum + length > s->max_rseqnum)
+		s->max_rseqnum = seqnum + length;
 }
 
 int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
@@ -128,12 +132,32 @@ int tcp_state_find_and_push(const uint8_t *srcaddr, uint16_t srcport,
 	return r;
 }
 
+int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
+	uint32_t *old, uint32_t add)
+{
+	tcp_state_id id;
+	int r = 1;
+	pthread_mutex_lock(&states_lock);
+	if(!tcp_state_find(srcaddr, srcport, &id)) {
+		r = 0;
+		goto ret;
+	}
+
+	struct tcp_state *s = &states[id];
+	*old = s->next_lseqnum;
+	s->next_lseqnum += add;
+
+	ret:
+	pthread_mutex_unlock(&states_lock);
+	return r;
+}
+
 
 void *tcp_state_get_buffer(tcp_state_id id, unsigned int *length)
 {
 	// no locking (read-only)
 	struct tcp_state *s = &states[id];
-	*length = s->max_seqnum - s->first_seqnum;
+	*length = s->max_rseqnum - s->first_rseqnum;
 	return s->buffer;
 }
 

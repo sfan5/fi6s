@@ -70,30 +70,22 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		// push data into session buffer
 		tcp_debug("< seqnum = %08x got data\n", rseqnum);
 		int ok = tcp_state_find_and_push(rsrcaddr, rport, TCP_DATA(rpacket, data_offset), plen, rseqnum);
+		if(!ok)
+			return;
 
-		// TODO: read RFC to find out what's up with this
-		const int x = TCP_HEADER(rpacket)->f_fin ? 1 : 0;
-
+		const int x = TCP_HEADER(rpacket)->f_fin ? 1 : 0; // TODO: read RFC to find out what's up with this
 		uint32_t lseqnum;
 		if(!tcp_state_add_seqnum(rsrcaddr, rport, &lseqnum, x))
 			return;
-		if(ok) {
-			// send ack(+fin)
-			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-			tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum + plen + x);
-			TCP_HEADER(spacket)->f_fin = TCP_HEADER(rpacket)->f_fin;
-			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
-			tcp_debug("> ack%s seq=%08x ack=%08x\n",
-				TCP_HEADER(spacket)->f_fin?"+fin":"", lseqnum, rseqnum + plen + x);
-		} else {
-			// send rst
-			rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
-			tcp_make_rst(TCP_HEADER(spacket), lseqnum);
-			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
+		// send ack(+fin)
+		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
+		tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum + plen + x);
+		TCP_HEADER(spacket)->f_fin = TCP_HEADER(rpacket)->f_fin;
+		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
-			tcp_debug("> rst seq=%08x\n", rseqnum);
-		}
+		tcp_debug("> ack%s seq=%08x ack=%08x\n",
+			TCP_HEADER(spacket)->f_fin?"+fin":"", lseqnum, rseqnum + plen + x);
 		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
 		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
 	} else if(TCP_HEADER(rpacket)->f_ack) {

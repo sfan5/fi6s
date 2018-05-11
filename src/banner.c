@@ -11,6 +11,7 @@ static const char *typemap_low[1024] = {
 	[23] = "telnet",
 	[53] = "domain",
 	[80] = "http",
+	[161] = "snmp",
 	[500] = "ike",
 };
 
@@ -444,7 +445,7 @@ static int ikev2_process(int off, uchar *banner, unsigned int *len)
 /** SNMP **/
 
 #define ERR_IF(expr) \
-	if(expr) { __builtin_trap(); return -1; }
+	if(expr) { return -1; }
 static int snmp_decode_length(int *_off, uchar *banner, unsigned int len, uint16_t *decoded)
 {
 	int off = *_off;

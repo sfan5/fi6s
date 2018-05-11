@@ -137,8 +137,24 @@ static const char *get_query_udp(int port, unsigned int *len)
 		"\x00\x00\x00\x00\x00\x00\x00\x00"
 		"\x00\x00\x00\x00\x00\x00\x00\x00"
 	;
+	static const char snmp[] =
+		"\x30\x29"
+		"\x02\x01\x00" // version-1
+		"\x04\x06public" // community string
+		"\xa0\x1c" // get-request
+		"\x02\x04\x11\x22\x33\x44" // request-id
+		"\x02\x01\x00"
+		"\x02\x01\x00"
+		"\x30\x0e" // variable-bindings
+		"\x30\x0c"
+		"\x06\x08\x2b\x06\x01\x02\x01\x01\x01\x00" // 1.3.6.1.2.1.1.1 = sysDescr
+		"\x05\x00" // NULL
+	;
 
 	switch(port) {
+		case 161:
+			*len = sizeof(snmp) - 1; // mind the null byte!
+			return snmp;
 		case 500:
 		case 4500: {
 			int skip = port == 4500 ? 0 : 4;

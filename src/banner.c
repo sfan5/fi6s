@@ -174,6 +174,7 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len);
 // protocols:
 static int dns_process(int off, uchar *banner, unsigned int *len);
 static int ikev2_process(int off, uchar *banner, unsigned int *len);
+static int snmp_process(uchar *banner, unsigned int *len);
 
 void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
 {
@@ -226,6 +227,13 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 void postprocess_udp(int port, uchar *banner, unsigned int *len)
 {
 	switch(port) {
+		case 161: {
+			int r = snmp_process(banner, len);
+			if(r == -1)
+				*len = 0;
+			break;
+		}
+
 		case 500:
 		case 4500: {
 			int r = ikev2_process(port == 4500 ? 4 : 0, banner, len);
@@ -233,6 +241,7 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len)
 				*len = 0;
 			break;
 		}
+
 		default:
 			break; // do nothing
 	}
@@ -428,6 +437,165 @@ static int ikev2_process(int off, uchar *banner, unsigned int *len)
 	*len = final_len;
 	return 0;
 }
-#undef BREAK_ERR_IF
+#undef ERR_IF
 #undef WRITEF
 #undef WRITEHEX
+
+/** SNMP **/
+
+#define ERR_IF(expr) \
+	if(expr) { __builtin_trap(); return -1; }
+static int snmp_decode_length(int *_off, uchar *banner, unsigned int len, uint16_t *decoded)
+{
+	int off = *_off;
+
+	ERR_IF(off + 1 > len)
+	uint8_t first = banner[off];
+	off++;
+	ERR_IF(first == 0x80 || first == 0xff) // not allowed: indefinite form / reserved
+
+	if(!(first & 0x80)) {
+		// short form
+		*_off = off;
+		*decoded = first;
+		return 0;
+	}
+	// long form
+	first &= ~0x80;
+	ERR_IF(first > 2) // wouldn't fit into a single packet
+	ERR_IF(off + first > len)
+	uint16_t value;
+	if(first == 2)
+		value = banner[off] << 8 | banner[off+1];
+	else // == 1
+		value = banner[off];
+	off += first;
+
+	*_off = off;
+	*decoded = value;
+	return 0;
+}
+
+static int snmp_check_opaque(int *_off, uchar *banner, unsigned int len, uint8_t type, int skip)
+{
+	int off = *_off;
+	int r;
+
+	ERR_IF(off + 1 > len)
+	ERR_IF(banner[off] != type)
+	off++;
+
+	uint16_t dlen;
+	r = snmp_decode_length(&off, banner, len, &dlen);
+	ERR_IF(r == -1)
+	ERR_IF(off + dlen > len)
+	if(skip)
+		off += dlen;
+
+	*_off = off;
+	return 0;
+}
+
+static int snmp_decode_integer(int *_off, uchar *banner, unsigned int len, uint32_t *decoded)
+{
+	int off = *_off;
+	int r;
+
+	ERR_IF(off + 1 > len)
+	ERR_IF(banner[off] != 0x02) // INTEGER
+	off++;
+
+	uint16_t dlen;
+	r = snmp_decode_length(&off, banner, len, &dlen);
+	ERR_IF(r == -1)
+	ERR_IF(off + dlen > len)
+
+	switch(dlen) {
+		case 1:
+			*decoded = banner[off];
+			break;
+		case 2:
+			*decoded = banner[off] << 8 | banner[off+1];
+			break;
+		case 4:
+			*decoded = banner[off] << 24 | banner[off+1] << 16 | banner[off+2] << 8 | banner[off+3];
+			break;
+		default:
+			return -1;
+	}
+
+	off += dlen;
+	*_off = off;
+	return 0;
+}
+
+static int snmp_decode_string(int *_off, uchar *banner, unsigned int len, uint32_t *slen)
+{
+	int off = *_off;
+	int r;
+
+	ERR_IF(off + 1 > len)
+	ERR_IF(banner[off] != 0x04) // OCTET STRING
+	off++;
+
+	uint16_t dlen;
+	r = snmp_decode_length(&off, banner, len, &dlen);
+	ERR_IF(r == -1)
+	ERR_IF(off + dlen > len) // check-only
+
+	*_off = off;
+	*slen = dlen;
+	return 0;
+}
+
+static int snmp_process(uchar *banner, unsigned int *len)
+{
+	int off, r;
+
+	off = 0;
+	r = snmp_check_opaque(&off, banner, *len, 0x30, 0); // ??
+	ERR_IF(r == -1)
+
+	uint32_t val;
+	r = snmp_decode_integer(&off, banner, *len, &val); // version
+	ERR_IF(r == -1)
+	ERR_IF(val != 0)
+
+	r = snmp_decode_string(&off, banner, *len, &val); // community string
+	ERR_IF(r == -1)
+	off += val;
+
+	r = snmp_check_opaque(&off, banner, *len, 0xa2, 0); // get-response
+	ERR_IF(r == -1)
+
+	r = snmp_decode_integer(&off, banner, *len, &val); // request-id
+	ERR_IF(r == -1)
+
+	r = snmp_decode_integer(&off, banner, *len, &val); // error-status
+	ERR_IF(r == -1)
+	if(val != 0) {
+		snprintf((char*) banner, *len, "-error %d-", val);
+		*len = strlen((char*) banner);
+		return 0;
+	}
+
+	r = snmp_decode_integer(&off, banner, *len, &val); // error-index
+	ERR_IF(r == -1)
+
+	for(int i = 0; i < 2; i++) {
+		r = snmp_check_opaque(&off, banner, *len, 0x30, 0); // ??
+		ERR_IF(r == -1)
+	}
+
+	r = snmp_check_opaque(&off, banner, *len, 0x06, 1); // OID
+	ERR_IF(r == -1)
+
+	r = snmp_decode_string(&off, banner, *len, &val); // value associated with OID
+	ERR_IF(r == -1)
+
+	// return just that string
+	memmove(banner, &banner[off], val);
+	*len = val;
+	return 0;
+}
+#undef ERR_IF

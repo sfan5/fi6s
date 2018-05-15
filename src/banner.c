@@ -23,6 +23,8 @@ const char *banner_service_type(uint8_t ip_type, int port)
 	switch(port) {
 		case 4500:
 			return typemap_low[500];
+		case 5060:
+			return "sip";
 		case 8080:
 			return typemap_low[80];
 		default:
@@ -151,6 +153,19 @@ static const char *get_query_udp(int port, unsigned int *len)
 		"\x06\x08\x2b\x06\x01\x02\x01\x01\x01\x00" // 1.3.6.1.2.1.1.1 = sysDescr
 		"\x05\x00" // NULL
 	;
+	static const char sip[] =
+		"OPTIONS sip:nm SIP/2.0\r\n"
+		"Via: SIP/2.0/UDP nm;branch=z9hG4bK0;rport\r\n"
+		"Max-Forwards: 70\r\n"
+		"From: <sip:nm@nm>;tag=0000\r\n"
+		"To: <sip:nm2@nm2>\r\n"
+		"Call-ID: 1\r\n"
+		"CSeq: 1 OPTIONS\r\n"
+		"Accept: application/sdp\r\n"
+		"Content-Length: 0\r\n"
+		"\r\n"
+	;
+
 
 	switch(port) {
 		case 161:
@@ -162,6 +177,9 @@ static const char *get_query_udp(int port, unsigned int *len)
 			*len = sizeof(ike) - skip - 1; // mind the null byte!
 			return &ike[skip];
 		}
+		case 5060:
+			*len = strlen(sip);
+			return sip;
 		default:
 			return NULL;
 	}

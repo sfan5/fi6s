@@ -253,7 +253,7 @@ int main(int argc, char *argv[])
 			missing = "--source-ip";
 		else if(!validate_ports(&ports))
 			missing = "-p";
-		else if(banners && source_port == -1)
+		else if(banners && !udp && source_port == -1)
 			missing = "--source-port";
 
 		if(missing) {

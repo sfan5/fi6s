@@ -31,10 +31,10 @@ int main(int argc, char *argv[])
 		{"source-port", required_argument, 0, 'R'},
 		{"ttl", required_argument, 0, 'Q'},
 		{"show-closed", no_argument, 0, 'P'},
-		{"banners", no_argument, 0, 'O'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
+		{"banners", no_argument, 0, 'b'},
 		{"udp", no_argument, 0, 'u'},
 		{0,0,0,0},
 	};
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 	memset(source_addr, 0xff, 16);
 	init_ports(&ports);
 	while(1) {
-		int c = getopt_long(argc, argv, "hp:o:qu", long_options, NULL);
+		int c = getopt_long(argc, argv, "hp:o:qbu", long_options, NULL);
 		if(c == -1)
 			break;
 		switch(c) {
@@ -132,9 +132,6 @@ int main(int argc, char *argv[])
 			case 'P':
 				show_closed = 1;
 				break;
-			case 'O':
-				banners = 1;
-				break;
 
 			case 'h':
 				usage();
@@ -156,6 +153,9 @@ int main(int argc, char *argv[])
 			}
 			case 'q':
 				quiet = 1;
+				break;
+			case 'b':
+				banners = 1;
 				break;
 			case 'u':
 				udp = 1;

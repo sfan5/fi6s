@@ -333,7 +333,8 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 		plen = BANNER_MAX_LENGTH;
 	char temp[BANNER_MAX_LENGTH];
 	memcpy(temp, UDP_DATA(packet), plen);
-	banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
+	if(outdef.postprocess)
+		banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
 	outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, temp, plen);
 
 	return;

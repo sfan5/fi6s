@@ -12,7 +12,7 @@ static void begin(FILE *f)
 	fprintf(f, "#fi6s\n");
 }
 
-static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
+static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
 {
 	// <status> tcp <port> <ip> <ts>
 	char addrstr[IPV6_STRING_MAX];
@@ -39,7 +39,7 @@ static void escaped(char *out, unsigned int outsize, const unsigned char* buf, u
 	}
 }
 
-static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
+static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// banner tcp <port> <ip> <ts> <proto> <banner>
 	char addrstr[IPV6_STRING_MAX], buffer[BANNER_MAX_LENGTH * (2+2)];
@@ -64,8 +64,9 @@ static void end(FILE *f)
 }
 
 const struct outputdef output_list = {
-	&begin,
-	&output_status,
-	&output_banner,
-	&end,
+	.begin = &begin,
+	.output_status = &status,
+	.output_banner = &banner,
+	.end = &end,
+	.postprocess = 1,
 };

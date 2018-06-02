@@ -44,7 +44,7 @@ static void begin(FILE *f)
 	fflush(f);
 }
 
-static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
+static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
 {
 	struct rec_header h;
 	h.timestamp = ts;
@@ -59,7 +59,7 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 	fflush(f);
 }
 
-static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
+static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	struct rec_header h;
 	h.timestamp = ts;
@@ -81,8 +81,9 @@ static void end(FILE *f)
 }
 
 const struct outputdef output_binary = {
-	&begin,
-	&output_status,
-	&output_banner,
-	&end,
+	.begin = &begin,
+	.output_status = &status,
+	.output_banner = &banner,
+	.end = &end,
+	.postprocess = 0,
 };

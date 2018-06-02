@@ -12,7 +12,7 @@ static void begin(FILE *f)
 	fprintf(f, "[\n");
 }
 
-static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
+static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
 {
 	// {ip: "<ip>", timestamp: <ts>, ports: [{port: <port>, proto: "<tcp/udp>", status: "<status>", ttl: <ttl>}]},
 	char addrstr[IPV6_STRING_MAX];
@@ -38,7 +38,7 @@ static void json_escape(char *out, unsigned int outsize, const unsigned char* bu
 	}
 }
 
-static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
+static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// {"ip": "<ip>", "timestamp": <ts>, "ports": [{"port": <port>, "proto": "<tcp/udp>", "service": {"name": "http", "banner": "......"}}]},
 	char addrstr[IPV6_STRING_MAX], svc[128], buffer[BANNER_MAX_LENGTH * (4+2)];
@@ -67,8 +67,9 @@ static void end(FILE *f)
 }
 
 const struct outputdef output_json = {
-	&begin,
-	&output_status,
-	&output_banner,
-	&end,
+	.begin = &begin,
+	.output_status = &status,
+	.output_banner = &banner,
+	.end = &end,
+	.postprocess = 1,
 };

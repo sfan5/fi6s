@@ -8,6 +8,7 @@
 
 static void begin(FILE *f)
 {
+	setvbuf(f, NULL, _IOLBF, 16384);
 	fprintf(f, "[\n");
 }
 

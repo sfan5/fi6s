@@ -10,7 +10,9 @@ struct ports;
 #define STATS_INTERVAL   1000 // ms
 #define FINISH_WAIT_TIME 5    // s
 #define BANNER_TIMEOUT   2500 // ms
+
 #define FIRST_SEQNUM 0xf0000000
+#define MAX_TCP_STATES 64000
 
 void scan_set_general(const struct ports *ports, int max_rate, int show_closed, int banners);
 void scan_set_network(const uint8_t *source_addr, int source_port, int ip_type);

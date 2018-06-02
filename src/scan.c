@@ -72,15 +72,18 @@ int scan_main(const char *interface, int quiet)
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	send_finished = false;
-	if(banners) {
+	if(banners && !udp) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
 			goto err;
-		if(!udp) {
-			// pick some high enough number if rate isn't limited
-			int count = max_rate == INT_MAX ? 65536 : (max_rate * BANNER_TIMEOUT / 1000);
-			if(tcp_state_init(count) < 0)
-				goto err;
+		int count = MAX_TCP_STATES;
+		if(max_rate != INT_MAX) {
+			// allocate enough tcp states so that every SYN packet could result in a connection
+			count = max_rate * BANNER_TIMEOUT / 1000;
+			if(count > MAX_TCP_STATES) // ...but only at most 64k
+				count = MAX_TCP_STATES;
 		}
+		if(tcp_state_init(count) < 0)
+			goto err;
 	}
 	if(!banners && udp && !quiet)
 		fprintf(stderr, "Warning: UDP scans don't really make sense without banners.\n");
@@ -122,7 +125,7 @@ int scan_main(const char *interface, int quiet)
 	fprintf(stderr, "\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
 	usleep(FINISH_WAIT_TIME * 1000 * 1000);
 	rawsock_breakloop();
-	if(banners)
+	if(banners && !udp)
 		scan_responder_finish();
 	if(!quiet)
 		fprintf(stderr, "rcv:%4u\n", atomic_exchange(&pkts_recv, 0));

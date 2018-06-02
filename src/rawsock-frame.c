@@ -17,8 +17,8 @@ void rawsock_eth_settings(const uint8_t *src, const uint8_t *dst)
 
 void rawsock_eth_prepare(struct frame_eth *f, int type)
 {
-	memcpy(f->dest, eth_dst, 16);
-	memcpy(f->src, eth_src, 16);
+	memcpy(f->dest, eth_dst, 6);
+	memcpy(f->src, eth_src, 6);
 	f->type = htobe16(type & 0xffff);
 }
 

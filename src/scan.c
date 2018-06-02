@@ -326,7 +326,7 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 		return;
 	}
 
-	unsigned int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE);
+	uint32_t plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE);
 	if(plen == 0)
 		return;
 	else if(plen > BANNER_MAX_LENGTH)

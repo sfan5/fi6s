@@ -153,7 +153,7 @@ int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
 }
 
 
-void *tcp_state_get_buffer(tcp_state_id id, unsigned int *length)
+void *tcp_state_get_buffer(tcp_state_id id, uint32_t *length)
 {
 	// no locking (read-only)
 	struct tcp_state *s = &states[id];

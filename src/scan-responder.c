@@ -142,7 +142,7 @@ static void *tcp_thread(void *unused)
 
 		tcp_state_id id;
 		while(tcp_state_next_expired(BANNER_TIMEOUT, &id)) {
-			unsigned int len;
+			uint32_t len;
 			void *buf = tcp_state_get_buffer(id, &len);
 			uint64_t ts = tcp_state_get_timestamp(id);
 			uint16_t srcport;

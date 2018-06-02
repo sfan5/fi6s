@@ -26,9 +26,9 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 	);
 }
 
-static void escaped(char *out, unsigned int outsize, const unsigned char* buf, unsigned int len)
+static void escaped(char *out, unsigned int outsize, const unsigned char* buf, uint32_t len)
 {
-	for(unsigned int i = 0; i < len; i++) {
+	for(uint32_t i = 0; i < len; i++) {
 		int c = buf[i];
 		char tmp[5] = {0};
 		if(c > 127 || !isprint(c))
@@ -39,7 +39,7 @@ static void escaped(char *out, unsigned int outsize, const unsigned char* buf, u
 	}
 }
 
-static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, unsigned int bannerlen)
+static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// banner tcp <port> <ip> <ts> <proto> <banner>
 	char addrstr[IPV6_STRING_MAX], buffer[BANNER_MAX_LENGTH * (2+2)];

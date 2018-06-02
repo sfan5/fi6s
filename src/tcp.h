@@ -49,7 +49,7 @@ int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
 int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
 	uint32_t *old, uint32_t add); // called for sending data
 
-void *tcp_state_get_buffer(tcp_state_id id, unsigned int *length); // writable!
+void *tcp_state_get_buffer(tcp_state_id id, uint32_t *length); // writable!
 uint64_t tcp_state_get_timestamp(tcp_state_id id);
 const uint8_t *tcp_state_get_remote(tcp_state_id id, uint16_t *port);
 

@@ -59,7 +59,7 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 	fflush(f);
 }
 
-static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, unsigned int bannerlen)
+static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	struct rec_header h;
 	h.timestamp = ts;

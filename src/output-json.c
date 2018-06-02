@@ -25,9 +25,9 @@ static void output_status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, 
 	);
 }
 
-static void json_escape(char *out, unsigned int outsize, const unsigned char* buf, unsigned int len)
+static void json_escape(char *out, unsigned int outsize, const unsigned char* buf, uint32_t len)
 {
-	for(unsigned int i = 0; i < len; i++) {
+	for(uint32_t i = 0; i < len; i++) {
 		int c = buf[i];
 		char tmp[7] = {0};
 		if(!isprint(c) || strchr("<>&\\\"\'", c) != NULL)
@@ -38,7 +38,7 @@ static void json_escape(char *out, unsigned int outsize, const unsigned char* bu
 	}
 }
 
-static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, unsigned int bannerlen)
+static void output_banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// {"ip": "<ip>", "timestamp": <ts>, "ports": [{"port": <port>, "proto": "<tcp/udp>", "service": {"name": "http", "banner": "......"}}]},
 	char addrstr[IPV6_STRING_MAX], svc[128], buffer[BANNER_MAX_LENGTH * (4+2)];

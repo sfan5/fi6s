@@ -29,7 +29,7 @@ void binary_write_record(struct obuf *o, const struct rec_header *h)
 	if(h->size != sizeof(*h))
 		fprintf(stderr, "Incorrectly sized record!\n");
 #endif
-	obuf_write(o, &h, sizeof(h));
+	obuf_write(o, h, sizeof(*h));
 	write_align(o, h->size);
 }
 

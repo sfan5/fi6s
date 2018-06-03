@@ -9,120 +9,7 @@
 
 #include "util.h"
 
-static void zc_find_range(const uint8_t *addr, int *first, int *last);
-
-void ipv6_string(char *dst, const uint8_t *addr)
-{
-	int pos = 0,
-		zc_first, zc_last;
-	zc_find_range(addr, &zc_first, &zc_last);
-
-	for(int i = 0; i < 8; i++) {
-		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
-
-		if(i == zc_first) {
-			if(i == 0)
-				pos += snprintf(&dst[pos], 3, "::");
-			else
-				pos += snprintf(&dst[pos], 2, ":");
-			continue;
-		} else if(i > zc_first && i <= zc_last) {
-			continue;
-		}
-
-		pos += snprintf(&dst[pos], 5, "%x", cur);
-		if(i != 7)
-			pos += snprintf(&dst[pos], 2, ":");
-	}
-}
-
-static void zc_find_range(const uint8_t *addr, int *first, int *last)
-{
-	int max_length = 0,
-		cur_length = 0;
-	*first = *last = -1;
-	for(int i = 0; i < 8; i++) {
-		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
-
-		if(cur == 0) {
-			cur_length++;
-			continue;
-		}
-		// cur >== max to prefer compressing later zero sequences
-		if(cur_length > 0 && cur_length >= max_length) {
-			*first = i - cur_length;
-			*last = i - 1;
-			max_length = cur_length;
-			cur_length = 0;
-		}
-	}
-	if(cur_length > 0 && cur_length >= max_length) {
-		*first = 8 - cur_length;
-		*last = 8 - 1;
-	}
-}
-
-int parse_mac(const char *str, uint8_t *dst)
-{
-	const char *p = str;
-	for(int i = 0; i < 6; i++) {
-		char cur[3];
-		int j = 0;
-		while(*p && *p != ':' && *p != '-' && j < 2)
-			cur[j++] = *(p++);
-		cur[j] = '\0';
-		j = strtol_simple(cur, 16);
-		if(j == -1)
-			return -1;
-		dst[i] = j & 0xff;
-		if(!*p && i != 5)
-			return -1;
-		p++;
-	}
-	return 0;
-}
-
-int parse_ipv6(const char *str, uint8_t *dst)
-{
-	memset(dst, 0, 16);
-	int given = strchr_count(str, ':') + 1;
-	// FIXME: this will not accept 1:2:3:4:5:6:7:: (eq 1:2:3:4:5:6:7:0)
-	if(given < 3 || given > 8) // '::' is 3 elements
-		return -1;
-
-	const char *p = str;
-	int i = 0;
-	while(i < 8) {
-		char cur[5], *next = strchrnul(p, ':');
-		if(next - p > sizeof(cur) - 1)
-			return -1;
-		strncpy_term(cur, p, next - p);
-
-		// FIXME: this will accept invalid addrs like :12::34:
-		if((i == 0 || i == 7) && strlen(cur) == 0)
-			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
-		if(strlen(cur) == 0) {
-			// zero compression: an empty field fills up the missing zeroes
-			i += 8 - given;
-			goto next;
-		}
-
-		int val = strtol_simple(cur, 16);
-		if(val == -1)
-			return -1;
-		uint16_t val_fixed = htobe16(val & 0xffff);
-		memcpy(&dst[i*2], &val_fixed, 2);
-
-		next:
-		if(*next == '\0')
-			break;
-		p = next + 1;
-		i++;
-	}
-
-	return (i == 7) ? 0 : -1;
-}
-
+// Port ranges
 void init_ports(struct ports *p)
 {
 	for(int i = 0; i < PORTS_MAX_RANGES; i++) {
@@ -237,6 +124,121 @@ int strtol_suffix(const char *str)
 	return value;
 }
 
+// Various utilities
+static void zc_find_range(const uint8_t *addr, int *first, int *last);
+
+void ipv6_string(char *dst, const uint8_t *addr)
+{
+	int pos = 0,
+		zc_first, zc_last;
+	zc_find_range(addr, &zc_first, &zc_last);
+
+	for(int i = 0; i < 8; i++) {
+		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
+
+		if(i == zc_first) {
+			if(i == 0)
+				pos += snprintf(&dst[pos], 3, "::");
+			else
+				pos += snprintf(&dst[pos], 2, ":");
+			continue;
+		} else if(i > zc_first && i <= zc_last) {
+			continue;
+		}
+
+		pos += snprintf(&dst[pos], 5, "%x", cur);
+		if(i != 7)
+			pos += snprintf(&dst[pos], 2, ":");
+	}
+}
+
+static void zc_find_range(const uint8_t *addr, int *first, int *last)
+{
+	int max_length = 0,
+		cur_length = 0;
+	*first = *last = -1;
+	for(int i = 0; i < 8; i++) {
+		uint16_t cur = addr[i*2] << 8 | addr[i*2 + 1];
+
+		if(cur == 0) {
+			cur_length++;
+			continue;
+		}
+		// cur >= max to prefer compressing later zero sequences
+		if(cur_length > 0 && cur_length >= max_length) {
+			*first = i - cur_length;
+			*last = i - 1;
+			max_length = cur_length;
+			cur_length = 0;
+		}
+	}
+	if(cur_length > 0 && cur_length >= max_length) {
+		*first = 8 - cur_length;
+		*last = 8 - 1;
+	}
+}
+
+int parse_mac(const char *str, uint8_t *dst)
+{
+	const char *p = str;
+	for(int i = 0; i < 6; i++) {
+		char cur[3];
+		int j = 0;
+		while(*p && *p != ':' && *p != '-' && j < 2)
+			cur[j++] = *(p++);
+		cur[j] = '\0';
+		j = strtol_simple(cur, 16);
+		if(j == -1)
+			return -1;
+		dst[i] = j & 0xff;
+		if(!*p && i != 5)
+			return -1;
+		p++;
+	}
+	return 0;
+}
+
+int parse_ipv6(const char *str, uint8_t *dst)
+{
+	memset(dst, 0, 16);
+	int given = strchr_count(str, ':') + 1;
+	// FIXME: this will not accept 1:2:3:4:5:6:7:: (eq 1:2:3:4:5:6:7:0)
+	if(given < 3 || given > 8) // '::' is 3 elements
+		return -1;
+
+	const char *p = str;
+	int i = 0;
+	while(i < 8) {
+		char cur[5], *next = strchrnul(p, ':');
+		if(next - p > sizeof(cur) - 1)
+			return -1;
+		strncpy_term(cur, p, next - p);
+
+		// FIXME: this will accept invalid addrs like :12::34:
+		if((i == 0 || i == 7) && strlen(cur) == 0)
+			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
+		if(strlen(cur) == 0) {
+			// zero compression: an empty field fills up the missing zeroes
+			i += 8 - given;
+			goto next;
+		}
+
+		int val = strtol_simple(cur, 16);
+		if(val == -1)
+			return -1;
+		uint16_t val_fixed = htobe16(val & 0xffff);
+		memcpy(&dst[i*2], &val_fixed, 2);
+
+		next:
+		if(*next == '\0')
+			break;
+		p = next + 1;
+		i++;
+	}
+
+	return (i == 7) ? 0 : -1;
+}
+
 int strtol_simple(const char *str, int base)
 {
 	char *endptr;
@@ -268,7 +270,7 @@ int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, un
 	return 0;
 }
 
-
+// UDP/TCP checksumming
 void chksum(uint32_t *tmp, const uint16_t *p, int n)
 {
 	assert(n % 2 == 0);

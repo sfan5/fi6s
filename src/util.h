@@ -4,9 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define IPV6_STRING_MAX 40
+// Port ranges
 #define PORTS_MAX_RANGES 32
-
 struct ports {
 	struct { uint16_t begin, end; } r[PORTS_MAX_RANGES];
 };
@@ -22,6 +21,9 @@ int parse_ports(const char *str, struct ports *dst); // parses list of ports int
 void ports_iter_begin(const struct ports *p, struct ports_iter *it); // begins iterating on a list of ports, only does reset if p == NULL
 int ports_iter_next(struct ports_iter *it); // gets next port value, has to be called initially; returns 0 if there's no more ports 1 otherwise
 
+// Various utilities
+#define IPV6_STRING_MAX 40
+
 void ipv6_string(char *dst, const uint8_t *addr); // writes null-terminated string representing the IPv6 address into buffer
 int parse_mac(const char *str, uint8_t *dst); // parses MAC address string and writes raw bytes into buffer
 int parse_ipv6(const char *str, uint8_t *dst); // parses IPv6 address string and writes raw bytes into buffer
@@ -31,11 +33,6 @@ int strchr_count(const char *str, int c); // counts occurrences of c
 int realloc_if_needed(void **array, unsigned int elemsize,
 		unsigned int used, unsigned int *total); // reallocarray() wrapper for convenience
 
-// UDP/TCP checksumming
-#define CHKSUM_INITIAL 0x0000
-void chksum(uint32_t *tmp, const uint16_t *p, int n);
-uint16_t chksum_final(uint32_t tmp, const uint16_t *p, int n);
-
 #define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
 	do { \
 		strncpy(dst, src, n); \
@@ -44,5 +41,10 @@ uint16_t chksum_final(uint32_t tmp, const uint16_t *p, int n);
 
 #define my_strlcat(dst, src, size) /* see strlcat(3) from libbsd */ \
 	strncat(dst, src, (size) - strlen(dst) - 1)
+
+// UDP/TCP checksumming
+#define CHKSUM_INITIAL 0x0000
+void chksum(uint32_t *tmp, const uint16_t *p, int n);
+uint16_t chksum_final(uint32_t tmp, const uint16_t *p, int n);
 
 #endif // _UTIL_H

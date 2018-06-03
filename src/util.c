@@ -294,3 +294,19 @@ uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)
 
 	return ~sum;
 }
+
+// Output buffering
+int obuf_write(struct obuf *b, const void *data, unsigned int datasize)
+{
+	if(b->offset + datasize > b->size)
+		return -1;
+	memcpy(&b->buffer[b->offset], data, datasize);
+	b->offset += datasize;
+	return 0;
+}
+
+void obuf_flush(struct obuf *b, FILE *f)
+{
+	fwrite(b->buffer, b->offset, 1, f);
+	b->offset = 0;
+}

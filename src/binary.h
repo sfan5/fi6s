@@ -6,10 +6,11 @@
 
 struct rec_header;
 struct reader;
+struct obuf;
 
-void binary_write_header(FILE *f);
-void binary_write_record(FILE *f, const struct rec_header *h);
-void binary_write_record_with_data(FILE *f, const struct rec_header *h, const void *data);
+void binary_write_header(struct obuf *o);
+void binary_write_record(struct obuf *o, const struct rec_header *h);
+void binary_write_record_with_data(struct obuf *o, const struct rec_header *h, const void *data);
 
 int binary_read_header(struct reader *r, FILE *f);
 int binary_read_record(struct reader *r, struct rec_header *h); // -1 = error, -2 = EOF

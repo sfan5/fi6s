@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 // Port ranges
 #define PORTS_MAX_RANGES 32
@@ -46,5 +47,18 @@ int realloc_if_needed(void **array, unsigned int elemsize,
 #define CHKSUM_INITIAL 0x0000
 void chksum(uint32_t *tmp, const uint16_t *p, int n);
 uint16_t chksum_final(uint32_t tmp, const uint16_t *p, int n);
+
+// Output buffering
+struct obuf {
+	char *buffer;
+	unsigned int offset, size;
+};
+
+int obuf_write(struct obuf *b, const void *data, unsigned int datasize);
+void obuf_flush(struct obuf *b, FILE *f); // does not(!) flush the file
+
+#define DECLARE_OBUF_STACK(name, bufsize) \
+	char name ## _backing [bufsize]; \
+	struct obuf name = { .buffer = name ## _backing, .offset = 0, .size = bufsize };
 
 #endif // _UTIL_H

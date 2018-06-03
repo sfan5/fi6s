@@ -4,17 +4,25 @@
 
 #include "output.h"
 #include "binary.h"
+#include "util.h"
+
+#define OUTPUT_BUFFER 512
+#define OUTPUT_BUFFER_BIG 65535
 
 static void begin(FILE *f)
 {
-	setvbuf(f, NULL, _IOFBF, 65535);
+	DECLARE_OBUF_STACK(buf, OUTPUT_BUFFER);
 
-	binary_write_header(f);
+	binary_write_header(&buf);
+
+	obuf_flush(&buf, f);
 	fflush(f);
 }
 
 static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
 {
+	DECLARE_OBUF_STACK(buf, OUTPUT_BUFFER);
+
 	struct rec_header h;
 	h.timestamp = ts;
 	h.size = sizeof(struct rec_header);
@@ -23,12 +31,14 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 	h.proto_status = (proto << 4) | status;
 	memcpy(h.addr, addr, 16);
 
-	binary_write_record(f, &h);
-	fflush(f);
+	binary_write_record(&buf, &h);
+	obuf_flush(&buf, f);
 }
 
 static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
+	DECLARE_OBUF_STACK(buf, OUTPUT_BUFFER_BIG);
+
 	struct rec_header h;
 	h.timestamp = ts;
 	h.size = sizeof(struct rec_header) + bannerlen;
@@ -37,8 +47,8 @@ static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 	h.proto_status = (proto << 4);
 	memcpy(h.addr, addr, 16);
 
-	binary_write_record_with_data(f, &h, banner);
-	fflush(f);
+	binary_write_record_with_data(&buf, &h, banner);
+	obuf_flush(&buf, f);
 }
 
 static void end(FILE *f)

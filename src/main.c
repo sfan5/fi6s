@@ -306,7 +306,7 @@ static void usage(void)
 	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
 	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
 	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
-	printf("  -p <port range(s)>      Only scan specified ports (\"-\" is short for 1-65535)\n");
+	printf("  -p <port range(s)>      Specify ports to scan (\"-\" is short for 1-65535)\n");
 	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
 	printf("  -o <file>               Set output file\n");
 	printf("  --show-closed           Output closed ports (RSTs)\n");
@@ -325,6 +325,16 @@ static void usage(void)
 	printf("      This will return all hosts 2001:db8::0, 2001:db8::1 ... 2001:db8::f\n");
 	printf("  It is only possible to specify one target specification on the command line,\n");
 	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
+	printf("Binary scan output:\n"); // TODO: this section sucks
+	printf("  The binary output format is special.\n");
+	printf("  During scanning banners will not be decoded or changed and are written in full.\n");
+	printf("  Afterwards binary scans can be read again and output in any other format.\n");
+	printf("  Options such as --banners and --show-closed can be applied both during scanning and reading.\n");
+	printf("  For example, both given command lines result in the same kind of output:\n");
+	printf("    fi6s -o scan.bin --output-format binary -b --show-closed 2001:db8::xx && fi6s -o final.txt --show-closed --readscan scan.bin\n");
+	printf("      First, scan the given subnet with banners and closed ports enabled. Second, filter banners but output closed ports.\n");
+	printf("    fi6s -o final.txt --show-closed 2001:db8::xx\n");
+	printf("      Scan with closed ports enabled, gives the same results as above\n");
 }
 
 static bool is_allFF(const uint8_t *buf, int len)

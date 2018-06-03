@@ -19,6 +19,10 @@ void scan_set_network(const uint8_t *source_addr, int source_port, int ip_type);
 void scan_set_output(FILE *outfile, const struct outputdef *outdef);
 int scan_main(const char *interface, int quiet);
 
+void scan_reader_set_general(int show_closed, int banners);
+void scan_reader_set_output(FILE *outfile, const struct outputdef *outdef);
+int scan_reader_main(FILE *infile);
+
 /*** INTERNAL ***/
 
 #define ETH_FRAME(buf) ( (struct frame_eth*) &(buf)[0] )

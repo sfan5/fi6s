@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
 		{"source-port", required_argument, 0, 'R'},
 		{"ttl", required_argument, 0, 'Q'},
 		{"show-closed", no_argument, 0, 'P'},
+		{"readscan", required_argument, 0, 'O'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
@@ -47,7 +48,7 @@ int main(int argc, char *argv[])
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
 	char *interface = NULL;
 	struct ports ports;
-	FILE *outfile = stdout;
+	FILE *outfile = stdout, *readscan = NULL;
 	const struct outputdef *outdef = &output_list;
 
 	memset(source_mac, 0xff, 6);
@@ -132,6 +133,15 @@ int main(int argc, char *argv[])
 			case 'P':
 				show_closed = 1;
 				break;
+			case 'O': {
+				FILE *f = fopen(optarg, "rb");
+				if(!f) {
+					printf("Failed to open scan file for reading.\n");
+					return 1;
+				}
+				readscan = f;
+				break;
+			}
 
 			case 'h':
 				usage();
@@ -164,13 +174,13 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
-	if(argc - optind != 1) {
+	if(!readscan && argc - optind != 1) {
 		printf("One target specification required\n");
 		return 1;
 	}
 
 	// attempt to auto-detect a few arguments
-	if(!echo_hosts) {
+	if(!echo_hosts && !readscan) {
 		if(!interface) {
 			if(rawsock_getdev(&interface) < 0)
 				return -1;
@@ -197,7 +207,9 @@ int main(int argc, char *argv[])
 	rawsock_ip_settings(source_addr, ttl);
 
 	const char *tspec = argv[optind];
-	if(*tspec == '@') { // load from file
+	if(readscan != NULL) {
+		// no targets in this mode
+	} else if(*tspec == '@') { // load from file
 		FILE *f;
 		char buf[128];
 		f = fopen(&tspec[1], "r");
@@ -223,7 +235,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		fclose(f);
-	} else {
+	} else { // single target spec
 		struct targetspec t;
 		if(target_parse(tspec, &t) < 0) {
 			printf("Failed to parse target spec.\n");
@@ -233,7 +245,11 @@ int main(int argc, char *argv[])
 	}
 
 	int r;
-	if(echo_hosts) {
+	if(readscan != NULL) {
+		scan_reader_set_general(show_closed, banners);
+		scan_reader_set_output(outfile, outdef);
+		r = scan_reader_main(readscan) < 0 ? 1 : 0;
+	} else if(echo_hosts) {
 		uint8_t addr[16];
 		char buf[IPV6_STRING_MAX];
 		while(target_gen_next(addr) == 0) {
@@ -269,6 +285,8 @@ int main(int argc, char *argv[])
 
 	target_gen_fini();
 	fclose(outfile);
+	if(readscan != NULL)
+		fclose(readscan);
 	return r;
 }
 
@@ -278,7 +296,8 @@ static void usage(void)
 	printf("Usage: fi6s [options] <target specification>\n");
 	printf("Options:\n");
 	printf("  --help                  Show this text\n");
-	printf("  --randomize-hosts <0|1> Randomize order of hosts (defaults to 1)\n");
+	printf("  --readscan <file>       Read specified binary scan instead of scanning\n");
+	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (enabled by default)\n");
 	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
 	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
 	printf("  --source-port <port>    Use specified source port for scanning\n");

@@ -25,7 +25,8 @@ SRC = \
 	output-list.c output-json.c output-binary.c \
 	tcp.c tcp-state.c \
 	udp.c \
-	banner.c
+	banner.c \
+	binary-write.c
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
 
 all: fi6s

@@ -6,9 +6,10 @@
 #include "util.h"
 #include "banner.h"
 
+#define OUTPUT_BUFFER 16384
+
 static void begin(FILE *f)
 {
-	setvbuf(f, NULL, _IOLBF, 16384);
 	fprintf(f, "[\n");
 }
 
@@ -25,40 +26,49 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 	);
 }
 
-static void json_escape(char *out, unsigned int outsize, const unsigned char* buf, uint32_t len)
+static void json_escape(struct obuf *out, const unsigned char* buf, uint32_t len)
 {
 	for(uint32_t i = 0; i < len; i++) {
 		int c = buf[i];
-		char tmp[7] = {0};
-		if(!isprint(c) || strchr("<>&\\\"\'", c) != NULL)
+		if(!isprint(c) || strchr("<>&\\\"\'", c) != NULL) {
+			char tmp[7];
 			snprintf(tmp, sizeof(tmp), "\\u00%02x", c);
-		else
-			*tmp = c;
-		my_strlcat(out, tmp, outsize);
+			obuf_writestr(out, tmp);
+		} else {
+			obuf_write(out, &buf[i], 1);
+		}
 	}
 }
 
 static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// {"ip": "<ip>", "timestamp": <ts>, "ports": [{"port": <port>, "proto": "<tcp/udp>", "service": {"name": "http", "banner": "......"}}]},
-	char addrstr[IPV6_STRING_MAX], svc[128], buffer[BANNER_MAX_LENGTH * (4+2)];
-	const char *temp;
+	DECLARE_OBUF_STACK(out, OUTPUT_BUFFER);
 
-	// use buffer so we can fprintf everything at once
-	*buffer = '\0';
-	json_escape(buffer, sizeof(buffer), (unsigned char*) banner, bannerlen);
+	char addrstr[IPV6_STRING_MAX], buffer[512];
 
 	ipv6_string(addrstr, addr);
-	temp = banner_service_type(banner_outproto2ip_type(proto), port);
-	if(temp)
-		snprintf(svc, sizeof(svc), "\"%s\"", temp);
-	else
-		strncpy(svc, "null", sizeof(svc));
-	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"%s\", \"service\": {\"name\": %s, \"banner\": \"%s\"}}]},\n",
-		addrstr, ts, port,
-		proto == OUTPUT_PROTO_TCP ? "tcp" : "udp",
-		svc, buffer
+	snprintf(buffer, sizeof(buffer), "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"%s\", \"service\": {\"name\": ",
+		addrstr, ts, port, proto == OUTPUT_PROTO_TCP ? "tcp" : "udp"
 	);
+	obuf_writestr(&out, buffer);
+
+	const char *temp = banner_service_type(banner_outproto2ip_type(proto), port);
+	if(temp) {
+		obuf_writestr(&out, "\"");
+		obuf_writestr(&out, temp);
+		obuf_writestr(&out, "\"");
+	} else {
+		obuf_writestr(&out, "null");
+	}
+
+	obuf_writestr(&out, ", \"banner\": \"");
+
+	json_escape(&out, (unsigned char*) banner, bannerlen);
+
+	obuf_writestr(&out, "\"}}]},\n");
+
+	obuf_flush(&out, f);
 }
 
 static void end(FILE *f)

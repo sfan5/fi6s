@@ -305,6 +305,11 @@ int obuf_write(struct obuf *b, const void *data, unsigned int datasize)
 	return 0;
 }
 
+int obuf_writestr(struct obuf *b, const char *data)
+{
+	return obuf_write(b, data, strlen(data));
+}
+
 void obuf_flush(struct obuf *b, FILE *f)
 {
 	fwrite(b->buffer, b->offset, 1, f);

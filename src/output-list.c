@@ -6,9 +6,10 @@
 #include "util.h"
 #include "banner.h"
 
+#define OUTPUT_BUFFER 16384
+
 static void begin(FILE *f)
 {
-	setvbuf(f, NULL, _IOLBF, 8192);
 	fprintf(f, "#fi6s\n");
 }
 
@@ -26,36 +27,42 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 	);
 }
 
-static void escaped(char *out, unsigned int outsize, const unsigned char* buf, uint32_t len)
+static void escaped(struct obuf *out, const unsigned char* buf, uint32_t len)
 {
 	for(uint32_t i = 0; i < len; i++) {
 		int c = buf[i];
-		char tmp[5] = {0};
-		if(c > 127 || !isprint(c))
+		if(c > 127 || !isprint(c)) {
+			char tmp[5];
 			snprintf(tmp, sizeof(tmp), "\\x%02x", c);
-		else
-			*tmp = c;
-		my_strlcat(out, tmp, outsize);
+			obuf_writestr(out, tmp);
+		} else {
+			obuf_write(out, &buf[i], 1);
+		}
 	}
 }
 
 static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// banner tcp <port> <ip> <ts> <proto> <banner>
-	char addrstr[IPV6_STRING_MAX], buffer[BANNER_MAX_LENGTH * (2+2)];
-	const char *svc;
+	DECLARE_OBUF_STACK(out, OUTPUT_BUFFER);
 
-	// output_banner() is called from a diff. thread, need to buffer output here
-	*buffer = '\0';
-	escaped(buffer, sizeof(buffer), (unsigned char*)banner, bannerlen);
+	char addrstr[IPV6_STRING_MAX], buffer[256];
+	const char *svc;
 
 	ipv6_string(addrstr, addr);
 	svc = banner_service_type(banner_outproto2ip_type(proto), port);
-	fprintf(f, "banner %s %u %s %" PRIu64 " %s %s\n",
+	snprintf(buffer, sizeof(buffer), "banner %s %u %s %" PRIu64 " %s",
 		proto == OUTPUT_PROTO_TCP ? "tcp" : "udp",
 		port, addrstr, ts,
-		svc ? svc : "?", buffer
+		svc ? svc : "?"
 	);
+	obuf_writestr(&out, buffer);
+
+	escaped(&out, (unsigned char*)banner, bannerlen);
+
+	obuf_writestr(&out, "\n");
+
+	obuf_flush(&out, f);
 }
 
 static void end(FILE *f)

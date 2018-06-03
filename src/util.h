@@ -55,6 +55,7 @@ struct obuf {
 };
 
 int obuf_write(struct obuf *b, const void *data, unsigned int datasize);
+int obuf_writestr(struct obuf *b, const char *data);
 void obuf_flush(struct obuf *b, FILE *f); // does not(!) flush the file
 
 #define DECLARE_OBUF_STACK(name, bufsize) \

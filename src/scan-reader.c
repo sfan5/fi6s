@@ -52,7 +52,7 @@ int scan_reader_main(FILE *infile)
 		if(has_data) {
 			uint32_t data_length = h.size - sizeof(h);
 			if(data_length > RECORD_MAX_DATA) {
-				fprintf(stderr, "Record has too much data (%" PRId32 " > %d)\n", data_length, RECORD_MAX_DATA);
+				fprintf(stderr, "Record has too much data (%" PRIu32 " > %d)\n", data_length, RECORD_MAX_DATA);
 				return -1;
 			}
 
@@ -60,12 +60,17 @@ int scan_reader_main(FILE *infile)
 			ret = binary_read_record_data(&r, data);
 			if(ret == -1)
 				return -1;
+
+			if(!banners)
+				continue;
 			if(outdef.postprocess) {
 				uint8_t ip_type = proto == OUTPUT_PROTO_TCP ? IP_TYPE_TCP : IP_TYPE_UDP;
 				banner_postprocess(ip_type, h.port, data, &data_length);
 			}
 			outdef.output_banner(outfile, h.timestamp, h.addr, proto, h.port, data, data_length);
 		} else {
+			if(!show_closed && status == OUTPUT_STATUS_CLOSED)
+				continue;
 			outdef.output_status(outfile, h.timestamp, h.addr, proto, h.port, h.ttl, status);
 		}
 	}

@@ -51,7 +51,7 @@ static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 
 	ipv6_string(addrstr, addr);
 	svc = banner_service_type(banner_outproto2ip_type(proto), port);
-	snprintf(buffer, sizeof(buffer), "banner %s %u %s %" PRIu64 " %s",
+	snprintf(buffer, sizeof(buffer), "banner %s %u %s %" PRIu64 " %s ",
 		proto == OUTPUT_PROTO_TCP ? "tcp" : "udp",
 		port, addrstr, ts,
 		svc ? svc : "?"

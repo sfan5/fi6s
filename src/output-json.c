@@ -6,7 +6,7 @@
 #include "util.h"
 #include "banner.h"
 
-#define OUTPUT_BUFFER 16384
+#define OUTPUT_BUFFER (512 + BANNER_MAX_LENGTH * (2+4))
 
 static void begin(FILE *f)
 {

@@ -7,11 +7,13 @@
 
 struct targetstate {
 	int done:1;
+	uint64_t delayed_start;
 	struct targetspec spec;
 	uint8_t cur[16];
 };
 
 static void shuffle(void *buf, int stride, int n);
+static uint64_t rand64();
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done);
@@ -31,7 +33,7 @@ static unsigned int targets_i, targets_size;
 
 int target_gen_init(void)
 {
-	cache = malloc(16*RANDOMIZE_SIZE);
+	cache = malloc(16*TARGET_RANDOMIZE_SIZE);
 	if(!cache)
 		abort();
 	cache_i = 0;
@@ -74,11 +76,41 @@ int target_gen_add(const struct targetspec *s)
 		return -1;
 
 	targets[i].done = 0;
+	targets[i].delayed_start = 0;
 	memcpy(&targets[i].spec, s, sizeof(struct targetspec));
 	memset(targets[i].cur, 0, 16);
 
-	if (i > 1 && randomize)
-		shuffle(targets, sizeof(struct targetstate), i+1);
+	return 0;
+}
+
+int target_get_finish_add(void)
+{
+	if(targets_i == 0)
+		return -1;
+
+#if TARGET_EVEN_SPREAD
+	// find "longest" target
+	uint64_t max = 0;
+	for(int i = 0; i < targets_i; i++) {
+		uint64_t tmp = 0, junk = 0;
+		progress_single(&targets[i], &tmp, &junk);
+		if(tmp > max)
+			max = tmp;
+	}
+	// adjust starting point of other targets
+	for(int i = 0; i < targets_i; i++) {
+		uint64_t tmp = 0, junk = 0;
+		progress_single(&targets[i], &tmp, &junk);
+		if(tmp == max)
+			continue;
+		// set begin randomly between the first and last possible starting point
+		targets[i].delayed_start = rand64() % (max - tmp + 1);
+	}
+#endif
+
+	if(randomize)
+		shuffle(targets, sizeof(struct targetstate), targets_i);
+
 	return 0;
 }
 
@@ -107,6 +139,26 @@ static void shuffle(void *_buf, int stride, int n)
 	}
 }
 
+static uint64_t rand64()
+{
+	uint64_t ret = 0;
+#if RAND_MAX >= INT32_MAX
+	// only 62-bits of randomness, but this is good enough
+	ret |= ((uint64_t) rand()) << 31;
+	ret |= (uint64_t) rand();
+#elif RAND_MAX >= INT16_MAX
+	// only 60-bits of randomness, but this is good enough
+	ret |= ((uint64_t) rand()) << 45;
+	ret |= ((uint64_t) rand()) << 30;
+	ret |= ((uint64_t) rand()) << 15;
+	ret |= (uint64_t) rand();
+#else
+#error built-in rand() does not provide enough randomness.
+#endif
+
+	return ret;
+}
+
 static void fill_cache(void)
 {
 	cache_i = 0;
@@ -116,10 +168,15 @@ static void fill_cache(void)
 		for(int i = 0; i < targets_i; i++) {
 			if(targets[i].done)
 				continue;
+			if(targets[i].delayed_start > 0) {
+				targets[i].delayed_start--;
+				continue;
+			}
+
 			any = 1;
 			next_addr(&targets[i], &cache[cache_size*16]);
 			cache_size++;
-			if(cache_size == RANDOMIZE_SIZE)
+			if(cache_size == TARGET_RANDOMIZE_SIZE)
 				goto out;
 		}
 		if(!any)
@@ -153,13 +210,12 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 		}
 	}
 	out:
-	// mark target as done
-	// if there's carry left over or if there's the mask has all bits set
+	// mark target as done if there's carry left over or the mask has all bits set
 	if(!any || carry == 1)
 		t->done = 1;
 }
 
-static inline void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)
+static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)
 {
 	uint64_t _total = 0, _done = 0;
 	for(int i = 0; i < 16; i++) {
@@ -172,9 +228,9 @@ static inline void progress_single(const struct targetstate *t, uint64_t *total,
 			_done |= !!(t->cur[i] & j);
 		}
 	}
-	*total += _total;
-	if(t->done) // _done will equal zero but the target is actually complete
-		*done += _total;
+	*total += _total + 1;
+	if(t->done) // cur wraps around to zero when the target is complete
+		*done += _total + 1;
 	else
 		*done += _done;
 }

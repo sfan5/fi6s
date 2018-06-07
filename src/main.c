@@ -217,7 +217,6 @@ int main(int argc, char *argv[])
 			printf("Failed to open target list for reading.\n");
 			return 1;
 		}
-		int any = 0;
 		while(fgets(buf, sizeof(buf), f) != NULL) {
 			struct targetspec t;
 
@@ -234,15 +233,8 @@ int main(int argc, char *argv[])
 				fclose(f);
 				return 1;
 			}
-
-			any = 1;
 		}
 		fclose(f);
-
-		if(!any) {
-			printf("No target specs given.\n");
-			return 1;
-		}
 	} else { // single target spec
 		struct targetspec t;
 		if(target_parse(tspec, &t) < 0) {
@@ -250,6 +242,10 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		target_gen_add(&t);
+	}
+	if(target_get_finish_add() < 0) {
+		printf("No target specs given.\n");
+		return 1;
 	}
 
 	int r;

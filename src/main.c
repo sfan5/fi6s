@@ -57,8 +57,10 @@ int main(int argc, char *argv[])
 	init_ports(&ports);
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:qbu", long_options, NULL);
-		if(c == -1)
+		if(c == -1) // no more options
 			break;
+		else if(c == '?') // signals error
+			return 1;
 		switch(c) {
 			case 'Z':
 				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {

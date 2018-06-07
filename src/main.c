@@ -245,7 +245,7 @@ int main(int argc, char *argv[])
 		}
 		target_gen_add(&t);
 	}
-	if(target_get_finish_add() < 0) {
+	if(!readscan && target_get_finish_add() < 0) {
 		printf("No target specs given.\n");
 		return 1;
 	}

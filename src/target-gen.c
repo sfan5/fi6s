@@ -58,8 +58,6 @@ float target_gen_progress(void)
 		progress_single(&targets[i], &total, &done);
 	done -= cache_size - cache_i;
 
-	if(total == 0) // does this even happen?
-		return 0.0f;
 	return (done * 1000 / total) / 1000.0f;
 }
 

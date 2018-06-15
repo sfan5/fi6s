@@ -64,7 +64,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 	tcp_decode_header(TCP_HEADER(rpacket), &data_offset);
 	if(!TCP_HEADER(rpacket)->f_rst && !TCP_HEADER(rpacket)->f_syn &&
 		len > FRAME_ETH_SIZE + FRAME_IP_SIZE + data_offset) {
-		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
+		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, NULL);
 		unsigned int plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + data_offset);
 
 		// push data into session buffer
@@ -86,6 +86,26 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 		tcp_debug("> ack%s seq=%08x ack=%08x\n",
 			TCP_HEADER(spacket)->f_fin?"+fin":"", lseqnum, rseqnum + plen + x);
+		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
+		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+	} else if(TCP_HEADER(rpacket)->f_fin) {
+		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, NULL);
+
+		tcp_debug("< seqnum = %08x finish\n", rseqnum);
+
+		const int x = 1; // TODO: read RFC to find out what's up with this
+		uint32_t lseqnum;
+		if(!tcp_state_add_seqnum(rsrcaddr, rport, &lseqnum, x))
+			goto send_rst;
+
+		// send ack+fin
+		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
+		tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum + x);
+		TCP_HEADER(spacket)->f_fin = 1;
+		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
+
+		tcp_debug("> ack+fin seq=%08x ack=%08x\n",
+			lseqnum, rseqnum + x);
 		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
 		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
 	} else if(TCP_HEADER(rpacket)->f_ack) {
@@ -135,7 +155,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 	return;
 	send_rst:
 	if(TCP_HEADER(rpacket)->f_ack) {
-		// !! rseqnum & acknum assumed to be decoded already !!
+		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
 		uint32_t lseqnum = acknum;
 		// send rst to abort connection
 		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);

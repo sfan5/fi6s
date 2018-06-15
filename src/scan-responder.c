@@ -71,7 +71,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_debug("< seqnum = %08x got data\n", rseqnum);
 		int ok = tcp_state_push(rsrcaddr, rport, TCP_DATA(rpacket, data_offset), plen, rseqnum);
 		if(!ok)
-			return;
+			goto send_rst;
 
 		const int x = TCP_HEADER(rpacket)->f_fin ? 1 : 0; // TODO: read RFC to find out what's up with this
 		uint32_t lseqnum;
@@ -130,6 +130,22 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		// register as new tcp session
 		lseqnum += plen;
 		tcp_state_create(rsrcaddr, rport, ts, lseqnum, rseqnum - 1);
+	}
+
+	return;
+	send_rst:
+	if(TCP_HEADER(rpacket)->f_ack) {
+		// !! rseqnum & acknum assumed to be decoded already !!
+		uint32_t lseqnum = acknum;
+		// send rst to abort connection
+		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
+		tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum);
+		TCP_HEADER(spacket)->f_rst = 1;
+		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
+
+		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
+		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
+		tcp_debug("> ack+rst seq=%08x ack=%08x\n", lseqnum, rseqnum);
 	}
 }
 

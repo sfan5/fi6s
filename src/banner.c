@@ -21,6 +21,8 @@ const char *banner_service_type(uint8_t ip_type, int port)
 	if(port < 1024)
 		return typemap_low[port];
 	switch(port) {
+		case 1723:
+			return "pptp";
 		case 4500:
 			return typemap_low[500];
 		case 5060:
@@ -78,6 +80,27 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		"User-Agent: fi6s/0.1 (+https://github.com/sfan5/fi6s)\r\n"
 		"\r\n"
 	;
+	static const char pptp[] =
+		"\x00\x9c" // length
+		"\x00\x01" // control message
+		"\x1a\x2b\x3c\x4d"
+		"\x00\x01\x00\x00" // Start-Control-Connection-Request
+		"\x01\x00\x00\x00" // version 1, revision 0
+		"\x00\x00\x00\x03\x00\x00\x00\x02" // capabilities
+		"\x00\x00\x00\x01"
+
+		// hostname
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+		// vendor string
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+	;
 
 	switch(port) {
 		case 21:
@@ -87,6 +110,9 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		case 8080:
 			*len = strlen(http);
 			return http;
+		case 1723:
+			*len = sizeof(pptp) - 1; // mind the null byte!
+			return pptp;
 		default:
 			*len = 0; // send nothing
 			return "";
@@ -143,7 +169,7 @@ static const char *get_query_udp(int port, unsigned int *len)
 	static const char snmp[] =
 		"\x30\x29"
 		"\x02\x01\x00" // version-1
-		"\x04\x06public" // community string
+		"\x04\x06" "public" // community string
 		"\xa0\x1c" // get-request
 		"\x02\x04\x11\x22\x33\x44" // request-id
 		"\x02\x01\x00"

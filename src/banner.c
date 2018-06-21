@@ -220,6 +220,7 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len);
 static int dns_process(int off, uchar *banner, unsigned int *len);
 static int ikev2_process(int off, uchar *banner, unsigned int *len);
 static int snmp_process(uchar *banner, unsigned int *len);
+static int pptp_process(uchar *banner, unsigned int *len);
 
 void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
 {
@@ -261,6 +262,13 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 				end = (uchar*) memmem(banner, *len, "\n\n", 2);
 			if(end)
 				*len = end - banner;
+			break;
+		}
+
+		case 1723: {
+			int r = pptp_process(banner, len);
+			if(r == -1)
+				*len = 0;
 			break;
 		}
 
@@ -644,3 +652,34 @@ static int snmp_process(uchar *banner, unsigned int *len)
 	return 0;
 }
 #undef ERR_IF
+
+/** PPTP **/
+
+#define ERR_IF(expr) \
+	if(expr) { return -1; }
+static int pptp_process(uchar *banner, unsigned int *len)
+{
+	int off = 0;
+
+	ERR_IF(off + 156 > *len)
+	uint16_t msgtype = banner[off+2] << 8 | banner[off+3];
+	ERR_IF(msgtype != 1) // control message
+	static const uchar cookie[] = { 0x1a, 0x2b, 0x3c, 0x4d };
+	ERR_IF(memcmp(cookie, &banner[off+4], 4) != 0)
+
+	uint16_t firmware;
+	char hostname[64+1], vendor[64+1];
+	firmware = banner[off+26] << 8 | banner[off+27];
+	memcpy(hostname, &banner[off+28], 64);
+	hostname[64] = '\0';
+	memcpy(vendor, &banner[off+92], 64);
+	vendor[64] = '\0';
+
+	snprintf((char*) banner, BANNER_MAX_LENGTH,
+		"Firmware: %d\nHostname: %s\nVendor: %s", firmware, hostname, vendor);
+	*len = strlen((char*) banner);
+	return 0;
+}
+#undef ERR_IF
+#undef WRITEF
+#undef WRITEHEX

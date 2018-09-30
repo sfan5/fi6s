@@ -151,6 +151,8 @@ static void *send_thread(void *unused)
 	struct ports_iter it;
 
 	(void) unused;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
 	if(target_gen_next(dstaddr) < 0)
@@ -194,6 +196,8 @@ static void *send_thread_udp(void *unused)
 	struct ports_iter it;
 
 	(void) unused;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_UDP);
 	if(target_gen_next(dstaddr) < 0)
@@ -247,6 +251,8 @@ static void *send_thread_udp(void *unused)
 static void *recv_thread(void *unused)
 {
 	(void) unused;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
 	if(rawsock_loop(recv_handler) < 0)
 		fprintf(stderr, "An error occurred in packet capture\n");
 	return NULL;

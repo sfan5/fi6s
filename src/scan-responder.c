@@ -172,8 +172,9 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 static void *tcp_thread(void *unused)
 {
 	(void) unused;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
 	do {
-		// TODO: need to handle being behind schedule?
 		usleep(BANNER_TIMEOUT * 1000 / 2);
 
 		tcp_state_id id;

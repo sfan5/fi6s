@@ -15,7 +15,6 @@
 
 static void usage(void);
 static bool is_allFF(const uint8_t *buf, int len);
-static void trim(char *buf, const char *trimchars);
 
 int main(int argc, char *argv[])
 {
@@ -222,7 +221,7 @@ int main(int argc, char *argv[])
 		while(fgets(buf, sizeof(buf), f) != NULL) {
 			struct targetspec t;
 
-			trim(buf, " \t\r\n");
+			trim_string(buf, " \t\r\n");
 			if(buf[0] == '#' || buf[0] == '\0')
 				continue; // skip comments and empty lines
 
@@ -350,20 +349,4 @@ static bool is_allFF(const uint8_t *buf, int len)
 			return false;
 	}
 	return true;
-}
-
-static void trim(char *buf, const char *trimchars)
-{
-	// front
-	int i = 0;
-	while(buf[i] && strchr(trimchars, buf[i]))
-		i++;
-	if(i > 0)
-		memmove(buf, &buf[i], strlen(buf) + 1 - i);
-
-	// back
-	char *ptr = buf + strlen(buf) - 1;
-	while(ptr > buf && strchr(trimchars, *ptr))
-		ptr--;
-	*(ptr + 1) = '\0';
 }

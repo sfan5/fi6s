@@ -33,6 +33,7 @@ int strtol_simple(const char *str, int base); // parses number
 int strchr_count(const char *str, int c); // counts occurrences of c
 int realloc_if_needed(void **array, unsigned int elemsize,
 		unsigned int used, unsigned int *total); // reallocarray() wrapper for convenience
+void trim_string(char *buf, const char *trimchars); // trims any amount of specified chars from left and right
 
 #define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
 	do { \

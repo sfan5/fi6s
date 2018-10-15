@@ -270,6 +270,22 @@ int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, un
 	return 0;
 }
 
+void trim_string(char *buf, const char *trimchars)
+{
+	// front
+	int i = 0;
+	while(buf[i] && strchr(trimchars, buf[i]))
+		i++;
+	if(i > 0)
+		memmove(buf, &buf[i], strlen(buf) + 1 - i);
+
+	// back
+	char *ptr = buf + strlen(buf) - 1;
+	while(ptr > buf && strchr(trimchars, *ptr))
+		ptr--;
+	*(ptr + 1) = '\0';
+}
+
 // UDP/TCP checksumming
 void chksum(uint32_t *tmp, const uint16_t *p, int n)
 {

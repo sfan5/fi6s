@@ -1,6 +1,7 @@
 #ifndef _TARGET_H
 #define _TARGET_H
 
+#include <stdio.h>
 #include <stdint.h>
 
 struct targetspec {
@@ -15,6 +16,7 @@ int target_parse(const char *str, struct targetspec *dst);
 
 int target_gen_init(void);
 void target_gen_set_randomized(int v);
+void target_gen_set_streaming(FILE *f);
 void target_gen_fini(void);
 
 int target_gen_add(const struct targetspec *s);

@@ -113,8 +113,12 @@ int scan_main(const char *interface, int quiet)
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
 		float progress = target_gen_progress();
-		if(!quiet)
-			fprintf(stderr, "snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
+		if(!quiet) {
+			if(progress < 0.0f)
+				fprintf(stderr, "snt:%4u rcv:%4u p:???%%\r", cur_sent, cur_recv);
+			else
+				fprintf(stderr, "snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
+		}
 		if(send_finished)
 			break;
 

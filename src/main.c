@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
 		{"ttl", required_argument, 0, 'Q'},
 		{"show-closed", no_argument, 0, 'P'},
 		{"readscan", required_argument, 0, 'O'},
+		{"stream-targets", no_argument, 0, 'N'},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
@@ -43,7 +44,7 @@ int main(int argc, char *argv[])
 		ttl = 64, max_rate = -1,
 		source_port = -1, quiet = 0,
 		show_closed = 0, banners = 0,
-		udp = 0;
+		udp = 0, stream_targets = 0;
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
 	char *interface = NULL;
 	struct ports ports;
@@ -143,6 +144,9 @@ int main(int argc, char *argv[])
 				readscan = f;
 				break;
 			}
+			case 'N':
+				stream_targets = 1;
+				break;
 
 			case 'h':
 				usage();
@@ -218,6 +222,12 @@ int main(int argc, char *argv[])
 			printf("Failed to open target list for reading.\n");
 			return 1;
 		}
+
+		if(stream_targets) {
+			target_gen_set_streaming(f);
+			goto skip_parsing;
+		}
+
 		while(fgets(buf, sizeof(buf), f) != NULL) {
 			struct targetspec t;
 
@@ -236,6 +246,8 @@ int main(int argc, char *argv[])
 			}
 		}
 		fclose(f);
+
+skip_parsing: ;
 	} else { // single target spec
 		struct targetspec t;
 		if(target_parse(tspec, &t) < 0) {
@@ -299,10 +311,12 @@ static void usage(void)
 {
 	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in little time.\n");
 	printf("Usage: fi6s [options] <target specification>\n");
+	printf("\n");
 	printf("Options:\n");
 	printf("  --help                  Show this text\n");
 	printf("  --readscan <file>       Read specified binary scan instead of scanning\n");
 	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (enabled by default)\n");
+	printf("  --stream-targets        Read target IPs from file on demand instead of ahead-of-time\n");
 	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
 	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
 	printf("  --source-port <port>    Use specified source port for scanning\n");
@@ -317,6 +331,7 @@ static void usage(void)
 	printf("  --show-closed           Output closed ports (RSTs)\n");
 	printf("  --banners               Capture banners\n");
 	printf("  -q                      Do not output periodic status message\n");
+	printf("\n");
 	printf("Target specification:\n");
 	printf("  A target specification is basically just a fancy netmask.\n");
 	printf("  Target specs come in three shapes:\n");
@@ -328,18 +343,20 @@ static void usage(void)
 	printf("    2001:db8::x (wildcard nibble notation)\n");
 	printf("      The resulting netmask will be all f's except the last nibble\n");
 	printf("      This will return all hosts 2001:db8::0, 2001:db8::1 ... 2001:db8::f\n");
-	printf("  It is only possible to specify one target specification on the command line,\n");
-	printf("  if you want to scan multiple save them to a file and pass @/path/to/file.txt to fi6s.\n");
-	printf("Binary scan output:\n"); // TODO: this section sucks
-	printf("  The binary output format is special.\n");
-	printf("  During scanning banners will not be decoded or changed and are written in full.\n");
-	printf("  Afterwards binary scans can be read again and output in any other format.\n");
-	printf("  Options such as --banners and --show-closed can be applied both during scanning and reading.\n");
-	printf("  For example, both given command lines result in the same kind of output:\n");
+	printf("  Only one target specification can be specified on the command line,\n");
+	printf("  if you want to scan multiple targets pass @/path/to/list_of_targets.txt to fi6s.\n");
+	printf("\n");
+	printf("The \"binary\" output format:\n");
+	printf("  When saving as binary output, banners will not be decoded or changes during scanning\n");
+	printf("  and are written to the file in full.\n");
+	printf("  These binary scans can then be read (and decoded) again afterwards\n");
+	printf("  and output in any desired output format.\n");
+	printf("  Options such as --banners and --show-closed are applied both during scanning and reading.\n");
+	printf("  For example, both given command lines equivalent in the kind of output they produce:\n");
 	printf("    fi6s -o scan.bin --output-format binary -b --show-closed 2001:db8::xx && fi6s -o final.txt --show-closed --readscan scan.bin\n");
 	printf("      First, scan the given subnet with banners and closed ports enabled. Second, filter banners but output closed ports.\n");
 	printf("    fi6s -o final.txt --show-closed 2001:db8::xx\n");
-	printf("      Scan with closed ports enabled, gives the same results as above\n");
+	printf("      Scan with closed ports enabled, gives the same results as above-\n");
 }
 
 static bool is_allFF(const uint8_t *buf, int len)

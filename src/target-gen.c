@@ -20,12 +20,15 @@ static void progress_single(const struct targetstate *t, uint64_t *total, uint64
 
 
 static int randomize = 1;
+static int mode_streaming = 0;
 
 static uint8_t *cache;
 static int cache_i;
 static int cache_size;
 
-struct targetstate *targets;
+static FILE *targets_from;
+
+static struct targetstate *targets;
 static unsigned int targets_i, targets_size;
 #define REALLOC_TARGETS() \
 	realloc_if_needed((void**) &targets, sizeof(struct targetstate), targets_i, &targets_size)
@@ -49,8 +52,17 @@ void target_gen_set_randomized(int v)
 	randomize = !!v;
 }
 
+void target_gen_set_streaming(FILE *f)
+{
+	mode_streaming = f != NULL;
+	targets_from = f;
+}
+
 float target_gen_progress(void)
 {
+	if(mode_streaming)
+		return -1.0f;
+
 	// What we do here is beyond horrible:
 	// We go through the bitmasks and assemble the number of hosts total and done
 	// Those are added together and used to calculate the percentage (don't forget the cache though)
@@ -67,10 +79,15 @@ void target_gen_fini(void)
 {
 	free(cache);
 	free(targets);
+	if(mode_streaming)
+		fclose(targets_from);
 }
 
 int target_gen_add(const struct targetspec *s)
 {
+	if(mode_streaming)
+		return -1;
+
 	int i = targets_i++;
 	if(REALLOC_TARGETS() < 0)
 		return -1;
@@ -85,6 +102,8 @@ int target_gen_add(const struct targetspec *s)
 
 int target_get_finish_add(void)
 {
+	if(mode_streaming)
+		return 0;
 	if(targets_i == 0)
 		return -1;
 
@@ -163,6 +182,26 @@ static void fill_cache(void)
 {
 	cache_i = 0;
 	cache_size = 0;
+
+	if(mode_streaming) {
+		char buf[128];
+		while(cache_size < TARGET_RANDOMIZE_SIZE) {
+			if(fgets(buf, sizeof(buf), targets_from) == NULL)
+				break;
+
+			trim_string(buf, " \t\r\n");
+			if(buf[0] == '#' || buf[0] == '\0')
+				continue; // skip comments and empty lines
+
+			if(parse_ipv6(buf, &cache[cache_size*16]) < 0) {
+				fprintf(stderr, "Failed to parse target IP \"%s\".\n", buf);
+				break;
+			}
+			cache_size++;
+		}
+		return;
+	}
+
 	while(1) {
 		int any = 0;
 		for(int i = 0; i < targets_i; i++) {

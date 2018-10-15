@@ -23,6 +23,8 @@ const char *banner_service_type(uint8_t ip_type, int port)
 	switch(port) {
 		case 1723:
 			return "pptp";
+		case 3306:
+			return "mysql";
 		case 4500:
 			return typemap_low[500];
 		case 5060:
@@ -221,6 +223,7 @@ static int dns_process(int off, uchar *banner, unsigned int *len);
 static int ikev2_process(int off, uchar *banner, unsigned int *len);
 static int snmp_process(uchar *banner, unsigned int *len);
 static int pptp_process(uchar *banner, unsigned int *len);
+static int mysql_process(uchar *banner, unsigned int *len);
 
 void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
 {
@@ -267,6 +270,13 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 
 		case 1723: {
 			int r = pptp_process(banner, len);
+			if(r == -1)
+				*len = 0;
+			break;
+		}
+
+		case 3306: {
+			int r = mysql_process(banner, len);
 			if(r == -1)
 				*len = 0;
 			break;
@@ -681,5 +691,33 @@ static int pptp_process(uchar *banner, unsigned int *len)
 	return 0;
 }
 #undef ERR_IF
-#undef WRITEF
-#undef WRITEHEX
+
+/** MySQL **/
+
+#define ERR_IF(expr) \
+	if(expr) { return -1; }
+static int mysql_process(uchar *banner, unsigned int *len)
+{
+	int off = 0;
+
+	ERR_IF(off + 5 > *len)
+	uint8_t protocol = banner[off+4];
+	off += 5;
+
+	if(protocol == 0xff) {
+		ERR_IF(off + 2 > *len)
+		off += 2; // skip error code
+	} else {
+		ERR_IF(protocol != 10)
+	}
+
+	// version string / error message
+	int i = 0;
+	while(off+i < *len && banner[off+i] != 0)
+		i++;
+
+	memmove(banner, &banner[off], i);
+	*len = i;
+	return 0;
+}
+#undef ERR_IF

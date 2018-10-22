@@ -1,6 +1,7 @@
 BUILD_TYPE ?= debug
 
-CFLAGS = -pipe -std=c11 -Wall -Wextra -Wno-sign-compare -pthread
+CFLAGS = -pipe -std=c11 -pthread -fno-strict-aliasing
+CFLAGS += -Wall -Wextra -Wno-sign-compare -Wcast-align
 LDFLAGS =
 LIBS = -lpcap
 

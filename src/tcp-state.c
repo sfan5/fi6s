@@ -9,6 +9,10 @@
 #include "banner.h"
 
 #define TCP_BUFFER_LEN BANNER_MAX_LENGTH
+#define TCP_STATES_PER_CHUNK 256
+
+#define TCP_PTR_CHUNK(ptr) ((struct tcp_states_chunk*) (ptr)->c)
+#define TCP_PTR_STATE(ptr) TCP_PTR_CHUNK(ptr)->s[(ptr)->i]
 
 struct tcp_state {
 	// remote endpoint
@@ -30,54 +34,42 @@ struct tcp_state {
 	char buffer[TCP_BUFFER_LEN];
 };
 
+struct tcp_states_chunk {
+	// Locked while any of the states inside this chunk may be read/written.
+	// This happens on two threads:
+	// - scan thread: _create, _push and _add_seqnum
+	// - tcp thread: _next_expired, _destroy and the _get methods
+	pthread_mutex_t lock;
 
-// There are two threads that deal with TCP states:
-// - The scan thread calls _create, _push and _add_seqnum
-// - The tcp thread calls _next_expired, _destroy and the _get methods
-static pthread_mutex_t states_lock;
+	struct tcp_state s[TCP_STATES_PER_CHUNK];
+	struct tcp_states_chunk *next;
+};
 
-static struct tcp_state *states;
-static tcp_state_id states_count;
+static struct tcp_states_chunk *first;
 
-// !!! The methods below don't do locking !!!
-static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id);
-static void internal_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum);
 
+static int create_chunk(struct tcp_states_chunk **dest);
+static void internal_find_empty(tcp_state_ptr *out_p);
+static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_p);
+// !! caller is expected to hold chunk lock
+static void internal_push(tcp_state_ptr *p, void *data, unsigned int length, uint32_t seqnum);
+// !! end
 static inline uint64_t monotonic_ms(void);
 
-int tcp_state_init(int count)
+int tcp_state_init(void)
 {
-	if(count <= 0)
-		return -1;
-	if(pthread_mutex_init(&states_lock, NULL) < 0)
-		return -1;
-	states = calloc(count, sizeof(struct tcp_state));
-	if(!states)
-		return -1;
-	states_count = count;
-	return 0;
+	return create_chunk(&first);
 }
 
-tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum)
+void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum)
 {
-	tcp_state_id id;
-	pthread_mutex_lock(&states_lock);
-	for(id = 0; id < states_count; id++) {
-		if(states[id].srcport == 0)
-			goto ret;
-	}
-#ifndef NDEBUG
-	fprintf(stderr, "Dropping TCP session due to overflow\n");
-#endif
-	id = 0;
+	tcp_state_ptr p;
+	internal_find_empty(&p);
 
-	ret: ;
-	struct tcp_state *s = &states[id];
-	s->srcport = srcport; // "claim" this entry
-	s->creation_time = monotonic_ms(); // and mark it as fresh
-	pthread_mutex_unlock(&states_lock);
-	// rest of initialization:
+	struct tcp_state *s = &TCP_PTR_STATE(&p);
 	memcpy(s->srcaddr, srcaddr, 16);
+	s->srcport = srcport;
+	s->creation_time = monotonic_ms();
 	s->saved_timestamp = ts;
 	s->next_lseqnum = next_lseqnum;
 	s->first_rseqnum = first_rseqnum + 1;
@@ -85,23 +77,181 @@ tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t
 #ifndef NDEBUG
 	memset(s->buffer, 0, sizeof(s->buffer));
 #endif
-	return id;
+
+	tcp_state_unlock(&p);
 }
 
-static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_id *out_id)
+int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
+	void *data, unsigned int length, uint32_t seqnum)
 {
-	for(tcp_state_id id = 0; id < states_count; id++) {
-		if(states[id].srcport == srcport && !memcmp(states[id].srcaddr, srcaddr, 16)) {
-			*out_id = id;
-			return 1;
+	tcp_state_ptr p;
+	if(!internal_find(srcaddr, srcport, &p))
+		return 0;
+
+	internal_push(&p, data, length, seqnum);
+	tcp_state_unlock(&p);
+
+	return 1;
+}
+
+int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
+	uint32_t *old, uint32_t add)
+{
+	tcp_state_ptr p;
+	if(!internal_find(srcaddr, srcport, &p))
+		return 0;
+
+	struct tcp_state *s = &TCP_PTR_STATE(&p);
+	*old = s->next_lseqnum;
+	s->next_lseqnum += add;
+
+	tcp_state_unlock(&p);
+	return 1;
+}
+
+
+void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
+	*length = s->max_rseqnum - s->first_rseqnum;
+	return s->buffer;
+}
+
+uint64_t tcp_state_get_timestamp(tcp_state_ptr *p)
+{
+	return TCP_PTR_STATE(p).saved_timestamp;
+}
+
+const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
+	*port = s->srcport;
+	return s->srcaddr;
+}
+
+
+int tcp_state_next_expired(int timeout, tcp_state_ptr *out_p)
+{
+	struct tcp_states_chunk *cur = first;
+	uint16_t i;
+	const uint64_t lower = monotonic_ms() - timeout;
+
+	pthread_mutex_lock(&cur->lock);
+	do {
+		for(i = 0; i < TCP_STATES_PER_CHUNK; i++) {
+			if(cur->s[i].srcport == 0)
+				continue;
+			if(cur->s[i].creation_time <= lower)
+				goto found;
 		}
+
+		if(!cur->next) {
+			pthread_mutex_unlock(&cur->lock);
+			return 0;
+		}
+
+		pthread_mutex_lock(&cur->next->lock);
+		pthread_mutex_unlock(&cur->lock);
+		cur = cur->next;
+	} while(1);
+
+found:
+	out_p->c = cur;
+	out_p->i = i;
+	// cur->lock remains locked, to be unlocked by tcp_state_unlock
+	return 1;
+}
+
+void tcp_state_delete(tcp_state_ptr *p)
+{
+	TCP_PTR_STATE(p).srcport = 0; // invalidate the entry
+	tcp_state_unlock(p);
+}
+
+void tcp_state_unlock(tcp_state_ptr *p)
+{
+	pthread_mutex_unlock(&TCP_PTR_CHUNK(p)->lock);
+#ifndef NDEBUG
+	p->c = NULL;
+#endif
+}
+
+
+static int create_chunk(struct tcp_states_chunk **dest)
+{
+	struct tcp_states_chunk *cur = calloc(1, sizeof(struct tcp_states_chunk));
+	if(!cur)
+		return -1;
+	if(pthread_mutex_init(&cur->lock, NULL) < 0) {
+		free(cur);
+		return -1;
 	}
+	*dest = cur;
 	return 0;
 }
 
-static void internal_push(tcp_state_id id, void *data, unsigned int length, uint32_t seqnum)
+static void internal_find_empty(tcp_state_ptr *out_p)
 {
-	struct tcp_state *s = &states[id];
+	struct tcp_states_chunk *cur = first;
+	uint16_t i;
+
+	pthread_mutex_lock(&cur->lock);
+	do {
+		for(i = 0; i < TCP_STATES_PER_CHUNK; i++) {
+			if(cur->s[i].srcport == 0)
+				goto found;
+		}
+
+		if(!cur->next) {
+			if(create_chunk(&cur->next) < 0) {
+				fprintf(stderr, "ERROR: Ran out of memory for TCP sessions\n");
+				abort();
+			}
+		}
+
+		pthread_mutex_lock(&cur->next->lock);
+		pthread_mutex_unlock(&cur->lock);
+		cur = cur->next;
+	} while(1);
+
+found: ;
+	out_p->c = cur;
+	out_p->i = i;
+	// cur->lock remains locked, to be unlocked by tcp_state_unlock
+}
+
+static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_p)
+{
+	struct tcp_states_chunk *cur = first;
+	uint16_t i;
+
+	pthread_mutex_lock(&cur->lock);
+	do {
+		for(i = 0; i < TCP_STATES_PER_CHUNK; i++) {
+			if(cur->s[i].srcport == srcport && !memcmp(cur->s[i].srcaddr, srcaddr, 16))
+				goto found;
+		}
+
+		if(!cur->next) {
+			pthread_mutex_unlock(&cur->lock);
+			return 0;
+		}
+
+		pthread_mutex_lock(&cur->next->lock);
+		pthread_mutex_unlock(&cur->lock);
+		cur = cur->next;
+	} while(1);
+
+found:
+	out_p->c = cur;
+	out_p->i = i;
+	// cur->lock remains locked, to be unlocked by tcp_state_unlock
+	return 1;
+}
+
+static void internal_push(tcp_state_ptr *p, void *data, unsigned int length, uint32_t seqnum)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
 	if(seqnum < s->first_rseqnum) // pretend seqnum wraparound doesn't exist
 		return;
 
@@ -114,90 +264,6 @@ static void internal_push(tcp_state_id id, void *data, unsigned int length, uint
 	if(seqnum + length > s->max_rseqnum)
 		s->max_rseqnum = seqnum + length;
 }
-
-int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
-	void *data, unsigned int length, uint32_t seqnum)
-{
-	tcp_state_id id;
-	int r = 1;
-	pthread_mutex_lock(&states_lock);
-	if(!internal_find(srcaddr, srcport, &id)) {
-		r = 0;
-		goto ret;
-	}
-	internal_push(id, data, length, seqnum);
-
-	ret:
-	pthread_mutex_unlock(&states_lock);
-	return r;
-}
-
-int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
-	uint32_t *old, uint32_t add)
-{
-	tcp_state_id id;
-	int r = 1;
-	pthread_mutex_lock(&states_lock);
-	if(!internal_find(srcaddr, srcport, &id)) {
-		r = 0;
-		goto ret;
-	}
-
-	struct tcp_state *s = &states[id];
-	*old = s->next_lseqnum;
-	s->next_lseqnum += add;
-
-	ret:
-	pthread_mutex_unlock(&states_lock);
-	return r;
-}
-
-
-void *tcp_state_get_buffer(tcp_state_id id, uint32_t *length)
-{
-	// no locking (read-only)
-	struct tcp_state *s = &states[id];
-	*length = s->max_rseqnum - s->first_rseqnum;
-	return s->buffer;
-}
-
-uint64_t tcp_state_get_timestamp(tcp_state_id id)
-{
-	// no locking (read-only)
-	return states[id].saved_timestamp;
-}
-
-const uint8_t *tcp_state_get_remote(tcp_state_id id, uint16_t *port)
-{
-	// no locking (read-only)
-	struct tcp_state *s = &states[id];
-	*port = s->srcport;
-	return s->srcaddr;
-}
-
-
-int tcp_state_next_expired(int timeout, tcp_state_id *out_id)
-{
-	// no locking (read-only)
-	uint64_t lower = monotonic_ms() - timeout;
-	for(tcp_state_id id = 0; id < states_count; id++) {
-		if(states[id].srcport == 0)
-			continue;
-		if(states[id].creation_time <= lower) {
-			*out_id = id;
-			return 1;
-		}
-	}
-	return 0;
-}
-
-void tcp_state_destroy(tcp_state_id id)
-{
-	pthread_mutex_lock(&states_lock);
-	states[id].srcport = 0; // invalidate the entry
-	pthread_mutex_unlock(&states_lock);
-}
-
 
 static inline uint64_t monotonic_ms(void)
 {

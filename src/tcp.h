@@ -25,7 +25,10 @@ struct tcp_header {
 	uint16_t csum; // Checksum
 	uint16_t urgptr; // Urgent pointer
 } __attribute__((packed));
-typedef unsigned int tcp_state_id;
+typedef struct {
+	void *c;
+	uint16_t i;
+} tcp_state_ptr;
 struct frame_ip;
 
 void tcp_prepare(struct tcp_header *pkt);
@@ -40,8 +43,8 @@ void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport);
 void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknum);
 
 
-int tcp_state_init(int count);
-tcp_state_id tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
+int tcp_state_init(void);
+void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
 	uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum); // called on SYN-ACK
 int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
 	void *data, unsigned int length,
@@ -49,11 +52,12 @@ int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
 int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
 	uint32_t *old, uint32_t add); // called for sending data
 
-void *tcp_state_get_buffer(tcp_state_id id, uint32_t *length); // writable!
-uint64_t tcp_state_get_timestamp(tcp_state_id id);
-const uint8_t *tcp_state_get_remote(tcp_state_id id, uint16_t *port);
+void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length); // writable!
+uint64_t tcp_state_get_timestamp(tcp_state_ptr *p);
+const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port);
 
-int tcp_state_next_expired(int timeout_ms, tcp_state_id *id);
-void tcp_state_destroy(tcp_state_id id);
+int tcp_state_next_expired(int timeout_ms, tcp_state_ptr *out_p);
+void tcp_state_delete(tcp_state_ptr *p);
+void tcp_state_unlock(tcp_state_ptr *p);
 
 #endif // _TCP_H

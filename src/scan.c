@@ -75,14 +75,7 @@ int scan_main(const char *interface, int quiet)
 	if(banners && !udp) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
 			goto err;
-		int count = MAX_TCP_STATES;
-		if(max_rate != INT_MAX) {
-			// allocate enough tcp states so that every SYN packet could result in a connection
-			count = max_rate * BANNER_TIMEOUT / 1000;
-			if(count > MAX_TCP_STATES) // ...but only at most 64k
-				count = MAX_TCP_STATES;
-		}
-		if(tcp_state_init(count) < 0)
+		if(tcp_state_init() < 0)
 			goto err;
 	}
 	if(!banners && udp && !quiet)

@@ -177,13 +177,13 @@ static void *tcp_thread(void *unused)
 	do {
 		usleep(BANNER_TIMEOUT * 1000 / 2);
 
-		tcp_state_id id;
-		while(tcp_state_next_expired(BANNER_TIMEOUT, &id)) {
+		tcp_state_ptr p;
+		while(tcp_state_next_expired(BANNER_TIMEOUT, &p)) {
 			uint32_t len;
-			void *buf = tcp_state_get_buffer(id, &len);
-			uint64_t ts = tcp_state_get_timestamp(id);
+			void *buf = tcp_state_get_buffer(&p, &len);
+			uint64_t ts = tcp_state_get_timestamp(&p);
 			uint16_t srcport;
-			const uint8_t *srcaddr = tcp_state_get_remote(id, &srcport);
+			const uint8_t *srcaddr = tcp_state_get_remote(&p, &srcport);
 
 			if (len > 0) {
 				// output banner to file
@@ -192,10 +192,10 @@ static void *tcp_thread(void *unused)
 				responder.outdef->output_banner(responder.outfile, ts, srcaddr, OUTPUT_PROTO_TCP, srcport, buf, len);
 			}
 
-			// destroy tcp session
-			tcp_state_destroy(id);
-
 			// TODO: terminate connection if needed(?)
+
+			// destroy tcp session
+			tcp_state_delete(&p);
 		}
 	} while(!responder.tcp_thread_exit);
 	return NULL;

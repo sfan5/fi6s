@@ -129,7 +129,6 @@ const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port)
 	return s->srcaddr;
 }
 
-
 int tcp_state_next_expired(int timeout, tcp_state_ptr *out_p)
 {
 	struct tcp_states_chunk *cur = first;
@@ -261,6 +260,18 @@ static void internal_push(tcp_state_ptr *p, void *data, unsigned int length, uin
 	else if(offset + length > TCP_BUFFER_LEN)
 		length = TCP_BUFFER_LEN - offset;
 	memcpy(&s->buffer[offset], data, length);
+
+	if(seqnum > s->max_rseqnum) {
+		unsigned int count = seqnum - s->max_rseqnum;
+		offset = s->max_rseqnum - s->first_rseqnum;
+		// seqnum discontinuity, fill the hole with zeros.
+		// the previous packet might still arrive and fill the hole,
+		// but if it doesn't we don't uninitialized data lying around.
+#ifndef NDEBUG
+		fprintf(stderr, "WARNING: Discontinuity in TCP seqnums (missing %d) in state [%d]\n", count, p->i);
+#endif
+		memset(&s->buffer[offset], 0, count);
+	}
 	if(seqnum + length > s->max_rseqnum)
 		s->max_rseqnum = seqnum + length;
 }

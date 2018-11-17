@@ -198,11 +198,10 @@ int parse_mac(const char *str, uint8_t *dst)
 	return 0;
 }
 
-int parse_ipv6(const char *str, uint8_t *dst)
+static int _parse_ipv6(const char *str, uint8_t *dst)
 {
 	memset(dst, 0, 16);
 	int given = strchr_count(str, ':') + 1;
-	// FIXME: this will not accept 1:2:3:4:5:6:7:: (eq 1:2:3:4:5:6:7:0)
 	if(given < 3 || given > 8) // '::' is 3 elements
 		return -1;
 
@@ -237,6 +236,26 @@ int parse_ipv6(const char *str, uint8_t *dst)
 	}
 
 	return (i == 7) ? 0 : -1;
+}
+
+int parse_ipv6(const char *str, uint8_t *dst)
+{
+	int given = strchr_count(str, ':') + 1;
+
+	// special handling for ::1:2:3:4:5:6:7 and 1:2:3:4:5:6:7::
+	// this is some seriously retarded shit, WHO CAME UP WITH THIS??
+	if(given == 9) {
+		char buf[40];
+		strncpy(buf, str, sizeof(buf) - 1);
+		buf[sizeof(buf) - 1] = '\0';
+		if(!strncmp(str, "::", 2))
+			buf[0] = '0';
+		else if(!strncmp(str + strlen(str) - 2, "::", 2))
+			buf[strlen(str) - 1] = '0';
+		return _parse_ipv6(buf, dst);
+	}
+
+	return _parse_ipv6(str, dst);
 }
 
 int strtol_simple(const char *str, int base)

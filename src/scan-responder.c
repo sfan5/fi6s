@@ -77,8 +77,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_state_push(&p, TCP_DATA(rpacket, data_offset), plen, rseqnum);
 
 		const int x = TCP_HEADER(rpacket)->f_fin ? 1 : 0; // TODO: read RFC to find out what's up with this
-		uint32_t lseqnum;
-		tcp_state_add_seqnum(&p, &lseqnum, x);
+		uint32_t lseqnum = tcp_state_add_seqnum(&p, x);
 		if(x)
 			tcp_state_set_fin(&p);
 
@@ -103,8 +102,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 			goto send_rst;
 
 		const int x = 1; // TODO: read RFC to find out what's up with this
-		uint32_t lseqnum;
-		tcp_state_add_seqnum(&p, &lseqnum, x);
+		uint32_t lseqnum = tcp_state_add_seqnum(&p, x);
 		tcp_state_set_fin(&p);
 
 		tcp_state_unlock(&p);
@@ -170,7 +168,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
 		uint32_t lseqnum = acknum;
 
-		// send rst to abort connection
+		// send rst
 		rawsock_ip_modify(IP_FRAME(spacket), TCP_HEADER_SIZE, rsrcaddr);
 		tcp_make_ack(TCP_HEADER(spacket), lseqnum, rseqnum);
 		TCP_HEADER(spacket)->f_rst = 1;
@@ -180,7 +178,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		rawsock_send(spacket, FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE);
 		tcp_debug("> ack+rst seq=%08x ack=%08x\n", lseqnum, rseqnum);
 	} else {
-		tcp_debug("want to send rst but can't...");
+		tcp_debug("want to send rst but can't..."); // because we don't know our local seqnum
 	}
 }
 
@@ -202,14 +200,32 @@ static void *tcp_thread(void *unused)
 			uint16_t srcport;
 			const uint8_t *srcaddr = tcp_state_get_remote(&p, &srcport);
 
-			if (len > 0) {
+			if(len > 0) {
 				// output banner to file
 				if(responder.outdef->postprocess)
 					banner_postprocess(IP_TYPE_TCP, srcport, buf, &len);
 				responder.outdef->output_banner(responder.outfile, ts, srcaddr, OUTPUT_PROTO_TCP, srcport, buf, len);
 			}
 
-			// TODO: terminate connection if needed(?)
+			// terminate connection if needed
+			if(!have_fin) {
+				const int packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE;
+				uint8_t _Alignas(long int) packet[packet_sz];
+				// The "global" packet buffer is in use by another thread, so
+				// we can't write but still copy the prepared structure from there
+				memcpy(packet, responder.buffer, packet_sz);
+
+				uint32_t lseqnum = tcp_state_add_seqnum(&p, 0);
+
+				// send rst
+				rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, srcaddr);
+				tcp_make_rst(TCP_HEADER(packet), lseqnum);
+				tcp_modify(TCP_HEADER(packet), responder.source_port, srcport);
+
+				tcp_checksum(IP_FRAME(packet), TCP_HEADER(packet), 0);
+				rawsock_send(packet, packet_sz);
+				tcp_debug("> rst seq=%08x\n", lseqnum);
+			}
 
 			// destroy tcp session
 			tcp_state_delete(&p);

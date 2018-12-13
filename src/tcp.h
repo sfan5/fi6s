@@ -52,7 +52,7 @@ int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_
 int tcp_state_next_expired(int timeout_ms, tcp_state_ptr *out_p);
 
 void tcp_state_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqnum);
-void tcp_state_add_seqnum(tcp_state_ptr *p, uint32_t *old, uint32_t add);
+uint32_t tcp_state_add_seqnum(tcp_state_ptr *p, uint32_t add);
 void tcp_state_set_fin(tcp_state_ptr *p);
 
 void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length); // writable!

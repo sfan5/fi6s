@@ -37,6 +37,7 @@ void tcp_make_rst(struct tcp_header *pkt, uint32_t seqnum)
 	reset_flags(pkt);
 	pkt->f_rst = 1;
 	pkt->seqnum = htobe32(seqnum);
+	pkt->acknum = 0;
 }
 
 void tcp_make_ack(struct tcp_header *pkt, uint32_t seqnum, uint32_t acknum)

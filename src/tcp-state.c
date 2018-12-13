@@ -125,11 +125,12 @@ void tcp_state_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqn
 	internal_push(p, data, length, seqnum);
 }
 
-void tcp_state_add_seqnum(tcp_state_ptr *p, uint32_t *old, uint32_t add)
+uint32_t tcp_state_add_seqnum(tcp_state_ptr *p, uint32_t add)
 {
 	struct tcp_state *s = &TCP_PTR_STATE(p);
-	*old = s->next_lseqnum;
+	uint32_t ret = s->next_lseqnum;
 	s->next_lseqnum += add;
+	return ret;
 }
 
 void tcp_state_set_fin(tcp_state_ptr *p)

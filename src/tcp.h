@@ -45,18 +45,20 @@ void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknu
 
 int tcp_state_init(void);
 void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
-	uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum); // called on SYN-ACK
-int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
-	void *data, unsigned int length,
-	uint32_t seqnum); // called whenever data is received
-int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
-	uint32_t *old, uint32_t add); // called for sending data
+	uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum);
+
+// both will leave state locked for caller to unlock (or delete)
+int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_p);
+int tcp_state_next_expired(int timeout_ms, tcp_state_ptr *out_p);
+
+void tcp_state_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqnum);
+void tcp_state_add_seqnum(tcp_state_ptr *p, uint32_t *old, uint32_t add);
+void tcp_state_set_fin(tcp_state_ptr *p);
 
 void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length); // writable!
-uint64_t tcp_state_get_timestamp(tcp_state_ptr *p);
+void tcp_state_get_misc(tcp_state_ptr *p, uint64_t *timestamp, int *fin);
 const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port);
 
-int tcp_state_next_expired(int timeout_ms, tcp_state_ptr *out_p);
 void tcp_state_delete(tcp_state_ptr *p);
 void tcp_state_unlock(tcp_state_ptr *p);
 

@@ -23,8 +23,9 @@ struct tcp_state {
 	uint64_t creation_time; // monotonic, in ms
 	uint64_t saved_timestamp;
 
-	// local sequence numbers
+	// local state
 	uint32_t next_lseqnum; // seqnum of next packet we would be sending
+	int have_fin : 1;
 
 	// remote sequence numbers
 	uint32_t first_rseqnum; // == <seqnum of syn-ack> + 1
@@ -52,7 +53,7 @@ static int create_chunk(struct tcp_states_chunk **dest);
 static void internal_find_empty(tcp_state_ptr *out_p);
 static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_p);
 // !! caller is expected to hold chunk lock
-static void internal_push(tcp_state_ptr *p, void *data, unsigned int length, uint32_t seqnum);
+static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqnum);
 // !! end
 static inline uint64_t monotonic_ms(void);
 
@@ -72,6 +73,7 @@ void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uin
 	s->creation_time = monotonic_ms();
 	s->saved_timestamp = ts;
 	s->next_lseqnum = next_lseqnum;
+	s->have_fin = 0;
 	s->first_rseqnum = first_rseqnum + 1;
 	s->max_rseqnum = s->first_rseqnum;
 #ifndef NDEBUG
@@ -81,52 +83,9 @@ void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uin
 	tcp_state_unlock(&p);
 }
 
-int tcp_state_push(const uint8_t *srcaddr, uint16_t srcport,
-	void *data, unsigned int length, uint32_t seqnum)
+int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_p)
 {
-	tcp_state_ptr p;
-	if(!internal_find(srcaddr, srcport, &p))
-		return 0;
-
-	internal_push(&p, data, length, seqnum);
-	tcp_state_unlock(&p);
-
-	return 1;
-}
-
-int tcp_state_add_seqnum(const uint8_t *srcaddr, uint16_t srcport,
-	uint32_t *old, uint32_t add)
-{
-	tcp_state_ptr p;
-	if(!internal_find(srcaddr, srcport, &p))
-		return 0;
-
-	struct tcp_state *s = &TCP_PTR_STATE(&p);
-	*old = s->next_lseqnum;
-	s->next_lseqnum += add;
-
-	tcp_state_unlock(&p);
-	return 1;
-}
-
-
-void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length)
-{
-	struct tcp_state *s = &TCP_PTR_STATE(p);
-	*length = s->max_rseqnum - s->first_rseqnum;
-	return s->buffer;
-}
-
-uint64_t tcp_state_get_timestamp(tcp_state_ptr *p)
-{
-	return TCP_PTR_STATE(p).saved_timestamp;
-}
-
-const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port)
-{
-	struct tcp_state *s = &TCP_PTR_STATE(p);
-	*port = s->srcport;
-	return s->srcaddr;
+	return internal_find(srcaddr, srcport, out_p) ? 1 : 0;
 }
 
 int tcp_state_next_expired(int timeout, tcp_state_ptr *out_p)
@@ -159,6 +118,45 @@ found:
 	out_p->i = i;
 	// cur->lock remains locked, to be unlocked by tcp_state_unlock
 	return 1;
+}
+
+void tcp_state_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqnum)
+{
+	internal_push(p, data, length, seqnum);
+}
+
+void tcp_state_add_seqnum(tcp_state_ptr *p, uint32_t *old, uint32_t add)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
+	*old = s->next_lseqnum;
+	s->next_lseqnum += add;
+}
+
+void tcp_state_set_fin(tcp_state_ptr *p)
+{
+	TCP_PTR_STATE(p).have_fin = 1;
+}
+
+
+void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
+	*length = s->max_rseqnum - s->first_rseqnum;
+	return s->buffer;
+}
+
+void tcp_state_get_misc(tcp_state_ptr *p, uint64_t *timestamp, int *fin)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
+	*timestamp = s->saved_timestamp;
+	*fin = s->have_fin;
+}
+
+const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port)
+{
+	struct tcp_state *s = &TCP_PTR_STATE(p);
+	*port = s->srcport;
+	return s->srcaddr;
 }
 
 void tcp_state_delete(tcp_state_ptr *p)
@@ -248,13 +246,13 @@ found:
 	return 1;
 }
 
-static void internal_push(tcp_state_ptr *p, void *data, unsigned int length, uint32_t seqnum)
+static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqnum)
 {
 	struct tcp_state *s = &TCP_PTR_STATE(p);
 	if(seqnum < s->first_rseqnum) // pretend seqnum wraparound doesn't exist
 		return;
 
-	unsigned int offset = seqnum - s->first_rseqnum;
+	uint32_t offset = seqnum - s->first_rseqnum;
 	if(offset > TCP_BUFFER_LEN)
 		return;
 	else if(offset + length > TCP_BUFFER_LEN)
@@ -262,7 +260,7 @@ static void internal_push(tcp_state_ptr *p, void *data, unsigned int length, uin
 	memcpy(&s->buffer[offset], data, length);
 
 	if(seqnum > s->max_rseqnum) {
-		unsigned int count = seqnum - s->max_rseqnum;
+		uint32_t count = seqnum - s->max_rseqnum;
 		offset = s->max_rseqnum - s->first_rseqnum;
 		// seqnum discontinuity, fill the hole with zeros.
 		// the previous packet might still arrive and fill the hole,

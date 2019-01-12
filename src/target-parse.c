@@ -35,7 +35,7 @@ int target_parse(const char *str, struct targetspec *dst)
 		return -1;
 
 	if(strchr(mask, '-')) { // subnet range notation
-		char first[3], *second;
+		char first[4], *second;
 		second = strchr(mask, '-');
 		if(!second || second - mask > sizeof(first) - 1)
 			return -1;

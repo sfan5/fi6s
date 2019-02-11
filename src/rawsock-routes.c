@@ -146,8 +146,8 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 		struct ndmsg *ndm = (struct ndmsg*) NLMSG_DATA(msg);
 		if(ndm->ndm_family != AF_INET6)
 			continue;
-		if(ndm->ndm_state != NUD_REACHABLE && ndm->ndm_state != NUD_DELAY &&
-			ndm->ndm_state != NUD_PERMANENT)
+		if(ndm->ndm_state != NUD_REACHABLE && ndm->ndm_state != NUD_STALE &&
+			ndm->ndm_state != NUD_DELAY && ndm->ndm_state != NUD_PERMANENT)
 			continue;
 
 		struct rtattr *rta = (struct rtattr*) RTM_RTA(ndm);

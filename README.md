@@ -7,9 +7,7 @@ though it is not as full-featured yet.
 
 ## Building
 
-Building should be fairly easy on up-to-date distros.
-
-On Ubuntu 16.04 (xenial) it looks like this:
+Building is fairly easy on any recent Linux system, e.g. on Ubuntu:
 
 	# apt install gcc make git libpcap-dev
 	$ git clone https://github.com/sfan5/fi6s.git
@@ -21,8 +19,8 @@ Note that fi6s is developed solely on Linux, thus it probably won't compile on n
 
 ## Usage
 
-Usage is pretty easy, fi6s will try to auto-detect the
-dirty technical details (source/dest MAC, source IP).
+Usage is pretty easy, fi6s will try to auto-detect the dirty technical details
+such as source, router MAC addresses and source IP.
 
 	# ./fi6s -p 80,8000-8100 2001:db8::/120
 
@@ -32,10 +30,10 @@ This example will:
 * output scan results to `stdout` in the "`list`" format
 
 There are more different ways of specifying an address range to scan,
-if you aren't sure what's about to happen invoke fi6s with `--echo-hosts`
-and it will print every host that would've been scanned.
+if you aren't sure what's about to happen invoke fi6s with `--print-hosts`
+to print all IPs or `--print-summary` to get a quick overview about the scan.
 
-For advanced features please consult the output of `./fi6s -h`.
+For more advanced features please consult the output of `fi6s --help`.
 
 ## Grabbing banners
 
@@ -46,4 +44,4 @@ and a constant `--source-port`.
 Banner grabbing is then enabled by passing `--banners`:
 
 	# ip6tables -A INPUT -p tcp -m tcp --dport 12345 -j DROP
-	# ./fi6s -p 22 --banners --source-port 12345 2001:db8::/120
+	# ./fi6s -p 22 --banners --source-port 12345 2001:db8::xx

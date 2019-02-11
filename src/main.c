@@ -19,19 +19,21 @@ static bool is_allFF(const uint8_t *buf, int len);
 int main(int argc, char *argv[])
 {
 	const struct option long_options[] = {
-		{"randomize-hosts", required_argument, 0, 'Z'},
-		{"echo-hosts", no_argument, 0, 'Y'},
-		{"max-rate", required_argument, 0, 'X'},
-		{"output-format", required_argument, 0, 'W'},
-		{"interface", required_argument, 0, 'V'},
-		{"source-mac", required_argument, 0, 'U'},
-		{"router-mac", required_argument, 0, 'T'},
-		{"source-ip", required_argument, 0, 'S'},
-		{"source-port", required_argument, 0, 'R'},
-		{"ttl", required_argument, 0, 'Q'},
-		{"show-closed", no_argument, 0, 'P'},
-		{"readscan", required_argument, 0, 'O'},
-		{"stream-targets", no_argument, 0, 'N'},
+		{"readscan", required_argument, 0, 1000},
+		{"print-hosts", no_argument, 0, 1001},
+
+		{"randomize-hosts", required_argument, 0, 2000},
+		{"max-rate", required_argument, 0, 2001},
+		{"interface", required_argument, 0, 2002},
+		{"source-mac", required_argument, 0, 2003},
+		{"router-mac", required_argument, 0, 2004},
+		{"source-ip", required_argument, 0, 2005},
+		{"source-port", required_argument, 0, 2006},
+		{"ttl", required_argument, 0, 2007},
+		{"stream-targets", no_argument, 0, 2008},
+
+		{"output-format", required_argument, 0, 3000},
+		{"show-closed", no_argument, 0, 3001},
 
 		{"help", no_argument, 0, 'h'},
 		{"output-file", required_argument, 0, 'o'},
@@ -62,17 +64,27 @@ int main(int argc, char *argv[])
 		else if(c == '?') // signals error
 			return 1;
 		switch(c) {
-			case 'Z':
+			case 1000: {
+				FILE *f = fopen(optarg, "rb");
+				if(!f) {
+					printf("Failed to open scan file for reading.\n");
+					return 1;
+				}
+				readscan = f;
+				break;
+			}
+			case 1001:
+				echo_hosts = 1;
+				break;
+
+			case 2000:
 				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {
 					printf("Argument to --randomize-hosts must be 0 or 1\n");
 					return 1;
 				}
 				randomize_hosts = (*optarg == '1');
 				break;
-			case 'Y':
-				echo_hosts = 1;
-				break;
-			case 'X': {
+			case 2001: {
 				int val = strtol_suffix(optarg);
 				if(val <= 0) {
 					printf("Argument to --max-rate must be a positive number\n");
@@ -81,7 +93,50 @@ int main(int argc, char *argv[])
 				max_rate = val;
 				break;
 			}
-			case 'W':
+			case 2002:
+				interface = optarg;
+				break;
+			case 2003:
+				if(parse_mac(optarg, source_mac) < 0) {
+					printf("Argument to --source-mac is not a valid MAC address\n");
+					return 1;
+				}
+				break;
+			case 2004:
+				if(parse_mac(optarg, router_mac) < 0) {
+					printf("Argument to --router-mac is not a valid MAC address\n");
+					return 1;
+				}
+				break;
+			case 2005:
+				if(parse_ipv6(optarg, source_addr) < 0) {
+					printf("Argument to --source-ip is not a valid IPv6 address\n");
+					return 1;
+				}
+				break;
+			case 2006: {
+				int val = strtol_simple(optarg, 10);
+				if(val < 1 || val > 65535) {
+					printf("Argument to --source-port must be a number in range 1-65535\n");
+					return 1;
+				}
+				source_port = val;
+				break;
+			}
+			case 2007: {
+				int val = strtol_simple(optarg, 10);
+				if(val < 1 || val > 255) {
+					printf("Argument to --ttl must be a number in range 1-255\n");
+					return 1;
+				}
+				ttl = val;
+				break;
+			}
+			case 2008:
+				stream_targets = 1;
+				break;
+
+			case 3000:
 				if(strcmp(optarg, "list") == 0) {
 					outdef = &output_list;
 				} else if(strcmp(optarg, "json") == 0) {
@@ -93,59 +148,8 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				break;
-			case 'V':
-				interface = optarg;
-				break;
-			case 'U':
-				if(parse_mac(optarg, source_mac) < 0) {
-					printf("Argument to --source-mac is not a valid MAC address\n");
-					return 1;
-				}
-				break;
-			case 'T':
-				if(parse_mac(optarg, router_mac) < 0) {
-					printf("Argument to --router-mac is not a valid MAC address\n");
-					return 1;
-				}
-				break;
-			case 'S':
-				if(parse_ipv6(optarg, source_addr) < 0) {
-					printf("Argument to --source-ip is not a valid IPv6 address\n");
-					return 1;
-				}
-				break;
-			case 'R': {
-				int val = strtol_simple(optarg, 10);
-				if(val < 1 || val > 65535) {
-					printf("Argument to --source-port must be a number in range 1-65535\n");
-					return 1;
-				}
-				source_port = val;
-				break;
-			}
-			case 'Q': {
-				int val = strtol_simple(optarg, 10);
-				if(val < 1 || val > 255) {
-					printf("Argument to --ttl must be a number in range 1-255\n");
-					return 1;
-				}
-				ttl = val;
-				break;
-			}
-			case 'P':
+			case 3001:
 				show_closed = 1;
-				break;
-			case 'O': {
-				FILE *f = fopen(optarg, "rb");
-				if(!f) {
-					printf("Failed to open scan file for reading.\n");
-					return 1;
-				}
-				readscan = f;
-				break;
-			}
-			case 'N':
-				stream_targets = 1;
 				break;
 
 			case 'h':
@@ -175,12 +179,13 @@ int main(int argc, char *argv[])
 			case 'u':
 				udp = 1;
 				break;
+
 			default:
 				break;
 		}
 	}
 	if(!readscan && argc - optind != 1) {
-		printf("One target specification required\n");
+		printf("No target specification(s) given.\n");
 		return 1;
 	}
 
@@ -257,7 +262,7 @@ skip_parsing: ;
 		target_gen_add(&t);
 	}
 	if(!readscan && target_get_finish_add() < 0) {
-		printf("No target specs given.\n");
+		printf("No target specification(s) given.\n");
 		return 1;
 	}
 
@@ -312,25 +317,27 @@ static void usage(void)
 	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in little time.\n");
 	printf("Usage: fi6s [options] <target specification>\n");
 	printf("\n");
-	printf("Options:\n");
+	printf("General options:\n");
 	printf("  --help                  Show this text\n");
 	printf("  --readscan <file>       Read specified binary scan instead of scanning\n");
-	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (enabled by default)\n");
+	printf("  --print-hosts           Print all hosts to be scanned to stdout and exit (don't scan)\n");
+	printf("Scan options:\n");
+	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (default: 1)\n");
 	printf("  --stream-targets        Read target IPs from file on demand instead of ahead-of-time\n");
-	printf("  --echo-hosts            Print all hosts to be scanned to stdout and exit\n");
 	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
 	printf("  --source-port <port>    Use specified source port for scanning\n");
-	printf("  --interface <if>        Use <if> for capturing and sending packets\n");
+	printf("  --interface <iface>     Use <iface> for capturing and sending packets\n");
 	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
 	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
 	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
-	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (defaults to 64)\n");
-	printf("  -p <port range(s)>      Specify ports to scan (\"-\" is short for 1-65535)\n");
-	printf("  --output-format <fmt>   Set output format to list/json/binary (defaults to list)\n");
-	printf("  -o <file>               Set output file\n");
-	printf("  --show-closed           Output closed ports (RSTs)\n");
+	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (default: 64)\n");
+	printf("  -p <ranges>             Specify port range(s) to scan\n");
 	printf("  --banners               Capture banners\n");
 	printf("  -q                      Do not output periodic status message\n");
+	printf("Output options:\n");
+	printf("  -o <file>               Set output file\n");
+	printf("  --output-format <fmt>   Set output format to list/json/binary (default: list)\n");
+	printf("  --show-closed           Output closed ports (RSTs)\n");
 	printf("\n");
 	printf("Target specification:\n");
 	printf("  A target specification is basically just a fancy netmask.\n");
@@ -347,16 +354,16 @@ static void usage(void)
 	printf("  if you want to scan multiple targets pass @/path/to/list_of_targets.txt to fi6s.\n");
 	printf("\n");
 	printf("The \"binary\" output format:\n");
-	printf("  When saving as binary output, banners will not be decoded or changes during scanning\n");
-	printf("  and are written to the file in full.\n");
+	printf("  When saving as binary output, banners will not be decoded or modified\n");
+	printf("  during scanning and are written to the file in full.\n");
 	printf("  These binary scans can then be read (and decoded) again afterwards\n");
 	printf("  and output in any desired output format.\n");
 	printf("  Options such as --banners and --show-closed are applied both during scanning and reading.\n");
-	printf("  For example, both given command lines equivalent in the kind of output they produce:\n");
+	printf("  For example, both given invocations are equivalent in the kind of output they produce:\n");
 	printf("    fi6s -o scan.bin --output-format binary -b --show-closed 2001:db8::xx && fi6s -o final.txt --show-closed --readscan scan.bin\n");
 	printf("      First, scan the given subnet with banners and closed ports enabled. Second, filter banners but output closed ports.\n");
 	printf("    fi6s -o final.txt --show-closed 2001:db8::xx\n");
-	printf("      Scan with closed ports enabled, gives the same results as above-\n");
+	printf("      Scan with closed ports enabled, gives the same results as above.\n");
 }
 
 static bool is_allFF(const uint8_t *buf, int len)

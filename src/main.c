@@ -16,11 +16,17 @@
 static void usage(void);
 static bool is_allFF(const uint8_t *buf, int len);
 
+enum operating_mode {
+	M_SCAN, M_PRINT_HOSTS,
+	M_READSCAN, M_PRINT_SUMMARY,
+};
+
 int main(int argc, char *argv[])
 {
 	const struct option long_options[] = {
 		{"readscan", required_argument, 0, 1000},
 		{"print-hosts", no_argument, 0, 1001},
+		{"print-summary", no_argument, 0, 1002},
 
 		{"randomize-hosts", required_argument, 0, 2000},
 		{"max-rate", required_argument, 0, 2001},
@@ -42,21 +48,29 @@ int main(int argc, char *argv[])
 		{0,0,0,0},
 	};
 
-	int echo_hosts = 0, randomize_hosts = 1,
+	int randomize_hosts = 1,
 		ttl = 64, max_rate = -1,
 		source_port = -1, quiet = 0,
 		show_closed = 0, banners = 0,
 		udp = 0, stream_targets = 0;
+	enum operating_mode mode;
 	uint8_t source_mac[6], router_mac[6], source_addr[16];
-	char *interface = NULL;
+	char *interface;
 	struct ports ports;
-	FILE *outfile = stdout, *readscan = NULL;
-	const struct outputdef *outdef = &output_list;
+	FILE *outfile, *readscan;
+	const struct outputdef *outdef;
+
+	mode = M_SCAN;
+	interface = NULL; // automatically picked
+	outfile = stdout;
+	outdef = &output_list;
 
 	memset(source_mac, 0xff, 6);
 	memset(router_mac, 0xff, 6);
 	memset(source_addr, 0xff, 16);
 	init_ports(&ports);
+	readscan = NULL;
+
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:qbu", long_options, NULL);
 		if(c == -1) // no more options
@@ -71,10 +85,14 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				readscan = f;
+				mode = M_READSCAN;
 				break;
 			}
 			case 1001:
-				echo_hosts = 1;
+				mode = M_PRINT_HOSTS;
+				break;
+			case 1002:
+				mode = M_PRINT_SUMMARY;
 				break;
 
 			case 2000:
@@ -184,13 +202,13 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
-	if(!readscan && argc - optind != 1) {
+	if(mode != M_READSCAN && argc - optind != 1) {
 		printf("No target specification(s) given.\n");
 		return 1;
 	}
 
 	// attempt to auto-detect a few arguments
-	if(!echo_hosts && !readscan) {
+	if(mode == M_SCAN) {
 		if(!interface) {
 			if(rawsock_getdev(&interface) < 0)
 				return -1;
@@ -201,8 +219,7 @@ int main(int argc, char *argv[])
 		if(is_allFF(router_mac, 6))
 			rawsock_getgw(interface, router_mac);
 		if(is_allFF(source_addr, 16)) {
-			struct sockaddr_in6 globaddr;
-			memset(&globaddr, 0, sizeof(struct sockaddr_in6));
+			struct sockaddr_in6 globaddr = {0};
 			globaddr.sin6_family = AF_INET6;
 			globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
 			rawsock_getsrcip(&globaddr, source_addr);
@@ -217,11 +234,11 @@ int main(int argc, char *argv[])
 	rawsock_ip_settings(source_addr, ttl);
 
 	const char *tspec = argv[optind];
-	if(readscan != NULL) {
+	if(mode == M_READSCAN) {
 		// no targets in this mode
 	} else if(*tspec == '@') { // load from file
 		FILE *f;
-		char buf[128];
+		char buf[256];
 		f = fopen(&tspec[1], "r");
 		if(!f) {
 			printf("Failed to open target list for reading.\n");
@@ -241,7 +258,7 @@ int main(int argc, char *argv[])
 				continue; // skip comments and empty lines
 
 			if(target_parse(buf, &t) < 0) {
-				printf("Failed to parse target spec \"%s\".\n", buf);
+				printf("Failed to parse target \"%s\".\n", buf);
 				fclose(f);
 				return 1;
 			}
@@ -256,28 +273,40 @@ skip_parsing: ;
 	} else { // single target spec
 		struct targetspec t;
 		if(target_parse(tspec, &t) < 0) {
-			printf("Failed to parse target spec.\n");
+			printf("Failed to parse target specification.\n");
 			return 1;
 		}
 		target_gen_add(&t);
 	}
-	if(!readscan && target_get_finish_add() < 0) {
+	if(mode != M_READSCAN && target_gen_finish_add() < 0) {
 		printf("No target specification(s) given.\n");
 		return 1;
 	}
 
 	int r;
-	if(readscan != NULL) {
+	if(mode == M_READSCAN) {
 		scan_reader_set_general(show_closed, banners);
 		scan_reader_set_output(outfile, outdef);
 		r = scan_reader_main(readscan) < 0 ? 1 : 0;
-	} else if(echo_hosts) {
+	} else if(mode == M_PRINT_HOSTS) {
 		uint8_t addr[16];
 		char buf[IPV6_STRING_MAX];
 		while(target_gen_next(addr) == 0) {
 			ipv6_string(buf, addr);
 			puts(buf);
 		}
+
+		r = 0;
+	} else if(mode == M_PRINT_SUMMARY) {
+		int nports = 0;
+		if(validate_ports(&ports)) {
+			struct ports_iter it;
+			for(ports_iter_begin(&ports, &it); ports_iter_next(&it); )
+				nports++;
+		} else {
+			nports = 1;
+		}
+		target_gen_print_summary(max_rate, nports);
 
 		r = 0;
 	} else {
@@ -307,7 +336,7 @@ skip_parsing: ;
 
 	target_gen_fini();
 	fclose(outfile);
-	if(readscan != NULL)
+	if(mode == M_READSCAN)
 		fclose(readscan);
 	return r;
 }

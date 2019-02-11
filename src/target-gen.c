@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "target.h"
 #include "util.h"
@@ -14,6 +15,7 @@ struct targetstate {
 
 static void shuffle(void *buf, int stride, int n);
 static uint64_t rand64();
+static int popcount(uint32_t x);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done);
@@ -100,7 +102,7 @@ int target_gen_add(const struct targetspec *s)
 	return 0;
 }
 
-int target_get_finish_add(void)
+int target_gen_finish_add(void)
 {
 	if(mode_streaming)
 		return 0;
@@ -147,6 +149,57 @@ int target_gen_next(uint8_t *dst)
 	return 0;
 }
 
+void target_gen_print_summary(int max_rate, int nports)
+{
+	if(mode_streaming) {
+		printf("???\n");
+		return;
+	}
+
+	uint64_t total = 0;
+	int largest = 128, smallest = 0;
+	for(int i = 0; i < targets_i; i++) {
+		const struct targetstate *t = &targets[i];
+
+		uint64_t junk = 0;
+		progress_single(t, &total, &junk);
+
+		int maskbits = 0;
+		for(int j = 0; j < 4; j++)
+			maskbits += popcount(((uint32_t*) t->spec.mask)[j]);
+		if(maskbits < largest)
+			largest = maskbits;
+		if(maskbits > smallest)
+			smallest = maskbits;
+	}
+
+	printf("%d target(s) loaded, covering %" PRId64 " addresses.\n", targets_i, total);
+	printf("Largest target equivalent to /%d subnet, smallest eq. /%d.\n", largest, smallest);
+
+	if(max_rate != -1) {
+		uint32_t dur = total / (unsigned)max_rate;
+		dur *= nports;
+
+		int n1, n2;
+		const char *f1, *f2;
+		if(dur > 7*24*60*60) {
+			n1 = dur / (7*24*60*60), n2 = dur % (7*24*60*60) / (24*60*60);
+			f1 = "weeks", f2 = "days";
+		} else if(dur > 24*60*60) {
+			n1 = dur / (24*60*60), n2 = dur % (24*60*60) / (60*60);
+			f1 = "days", f2 = "hours";
+		} else if(dur > 60*60) {
+			n1 = dur / (60*60), n2 = dur % (60*60) / (60);
+			f1 = "hours", f2 = "minutes";
+		} else {
+			n1 = dur / (60), n2 = dur % (60);
+			f1 = "minutes", f2 = "seconds";
+		}
+
+		printf("At %d PPS and %d port(s), estimated scan duration is %d %s %d %s.\n", max_rate, nports, n1, f1, n2, f2);
+	}
+}
+
 static void shuffle(void *_buf, int stride, int n)
 {
 	char tmp[stride], *buf = (char*) _buf;
@@ -176,6 +229,14 @@ static uint64_t rand64()
 #endif
 
 	return ret;
+}
+
+static int popcount(uint32_t x)
+{
+    int c = 0;
+    for (; x; x >>= 1)
+        c += x & 1;
+    return c;
 }
 
 static void fill_cache(void)

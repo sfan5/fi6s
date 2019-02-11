@@ -302,7 +302,7 @@ static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const 
 		int v, v2;
 		tcp_decode(TCP_HEADER(packet), &v, NULL);
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		int st = TCP_HEADER(packet)->f_syn? OUTPUT_STATUS_OPEN : OUTPUT_STATUS_CLOSED;
+		int st = TCP_HEADER(packet)->f_syn ? OUTPUT_STATUS_OPEN : OUTPUT_STATUS_CLOSED;
 		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
 			outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, st);
 	}
@@ -356,6 +356,6 @@ static inline int source_port_rand(void)
 {
 	int v;
 	v = rand() & 0xffff; // random 16-bit number
-	v |= 4096; // ensure that 1) it's not zero 2) it's >= 4096
+	v |= 16384; // ensure that 1) it's not zero 2) it's >= 16384
 	return v;
 }

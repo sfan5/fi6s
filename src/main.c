@@ -43,7 +43,9 @@ int main(int argc, char *argv[])
 		{"show-closed", no_argument, 0, 3001},
 
 		{"help", no_argument, 0, 'h'},
+		{"ports", required_argument, 0, 'p'},
 		{"output-file", required_argument, 0, 'o'},
+		{"quiet", no_argument, 0, 'q'},
 		{"banners", no_argument, 0, 'b'},
 		{"udp", no_argument, 0, 'u'},
 		{0,0,0,0},
@@ -348,36 +350,37 @@ skip_parsing: ;
 
 static void usage(void)
 {
-	printf("fi6s is a IPv6 network scanner aimed at scanning lots of hosts in little time.\n");
+	printf("fi6s is a IPv6 network scanner capable of scanning lots of targets in little time.\n");
 	printf("Usage: fi6s [options] <target specification>\n");
 	printf("\n");
 	printf("General options:\n");
 	printf("  --help                  Show this text\n");
-	printf("  --readscan <file>       Read specified binary scan instead of scanning\n");
-	printf("  --print-hosts           Print all hosts to be scanned to stdout and exit (don't scan)\n");
+	printf("  --readscan <file>       Read specified binary scan from <file> instead of performing a scan\n");
+	printf("  --print-hosts           Print all hosts to be scanned and exit (don't scan)\n");
+	printf("  --print-summary         Print summy of hosts to be scanned and exit (don't scan)\n");
 	printf("Scan options:\n");
-	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (default: 1)\n");
 	printf("  --stream-targets        Read target IPs from file on demand instead of ahead-of-time\n");
-	printf("  --max-rate <n>          Send no more than <n> packets per second\n");
-	printf("  --source-port <port>    Use specified source port for scanning\n");
+	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (default: 1)\n");
+	printf("  --max-rate <n>          Send no more than <n> packets per second (default: unlimited)\n");
 	printf("  --interface <iface>     Use <iface> for capturing and sending packets\n");
 	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
 	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
-	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
 	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (default: 64)\n");
-	printf("  -p <ranges>             Specify port range(s) to scan\n");
-	printf("  --banners               Capture banners\n");
-	printf("  -u                      UDP scan\n");
+	printf("  --source-ip <ip>        Use specified source IP for scanning\n");
+	printf("  --source-port <port>    Use specified source port for scanning\n");
+	printf("  -p/--ports <ranges>     Specify port range(s) to scan\n");
+	printf("  -b/--banners            Capture banners on open TCP ports\n");
+	printf("  -u/--udp                UDP scan\n");
 	printf("  --icmp                  ICMPv6 echo scan\n");
-	printf("  -q                      Do not output periodic status message\n");
+	printf("  -q/--quiet              Do not output status message during scan\n");
 	printf("Output options:\n");
-	printf("  -o <file>               Set output file\n");
-	printf("  --output-format <fmt>   Set output format to list/json/binary (default: list)\n");
-	printf("  --show-closed           Output closed ports (RSTs)\n");
+	printf("  -o <file>               Write results to <file>\n");
+	printf("  --output-format <fmt>   Set output format to one of list,json,binary (default: list)\n");
+	printf("  --show-closed           Show closed ports (TCP RST answers)\n");
 	printf("\n");
 	printf("Target specification:\n");
 	printf("  A target specification is basically just a fancy netmask.\n");
-	printf("  Target specs come in three shapes:\n");
+	printf("  They come in three shapes:\n");
 	printf("    2001:db8::/64 (classic subnet notation)\n");
 	printf("      This one should be obvious, you can even omit the number (it defaults to 128).\n");
 	printf("    2001:db8::1/32-48 (subnet range notation)\n");
@@ -393,13 +396,13 @@ static void usage(void)
 	printf("  When saving as binary output, banners will not be decoded or modified\n");
 	printf("  during scanning and are written to the file in full.\n");
 	printf("  These binary scans can then be read (and decoded) again afterwards\n");
-	printf("  and output in any desired output format.\n");
+	printf("  and be output in any desired output format.\n");
 	printf("  Options such as --banners and --show-closed are applied both during scanning and reading.\n");
 	printf("  For example, both given invocations are equivalent in the kind of output they produce:\n");
 	printf("    fi6s -o scan.bin --output-format binary -b --show-closed 2001:db8::xx && fi6s -o final.txt --show-closed --readscan scan.bin\n");
 	printf("      First, scan the given subnet with banners and closed ports enabled. Second, filter banners but output closed ports.\n");
 	printf("    fi6s -o final.txt --show-closed 2001:db8::xx\n");
-	printf("      Scan with closed ports enabled, gives the same results as above.\n");
+	printf("      Scan with closed ports enabled.\n");
 }
 
 static inline bool is_all_ff(const uint8_t *buf, int len)

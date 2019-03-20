@@ -71,7 +71,7 @@ void scan_set_output(FILE *_outfile, const struct outputdef *_outdef)
 
 int scan_main(const char *interface, int quiet)
 {
-	if(rawsock_open(interface, 65536) < 0)
+	if(rawsock_open(interface, 65535) < 0)
 		return -1;
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
@@ -82,9 +82,9 @@ int scan_main(const char *interface, int quiet)
 		if(tcp_state_init() < 0)
 			goto err;
 	}
-	if(!banners && ip_type == IP_TYPE_UDP && !quiet)
+	if(!banners && ip_type == IP_TYPE_UDP)
 		fprintf(stderr, "Warning: UDP scans don't make sense without banners enabled.\n");
-	if(banners && ip_type == IP_TYPE_ICMPV6 && !quiet)
+	if(banners && ip_type == IP_TYPE_ICMPV6)
 		fprintf(stderr, "Warning: Enabling banners is a no-op for ICMP scans.\n");
 
 	// Set capture filters

@@ -24,8 +24,7 @@ SRC = \
 	target-parse.c target-gen.c \
 	rawsock-pcap.c rawsock-frame.c rawsock-routes.c \
 	output-list.c output-json.c output-binary.c \
-	tcp.c tcp-state.c \
-	udp.c \
+	tcp.c tcp-state.c udp.c icmp.c \
 	banner.c \
 	binary-write.c binary-read.c
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 

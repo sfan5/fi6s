@@ -21,8 +21,9 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 	ipv6_string(addrstr, addr);
 	fprintf(f, "{\"ip\": \"%s\", \"timestamp\": %" PRIu64 ", \"ports\": [{\"port\": %u, \"proto\": \"%s\", \"status\": \"%s\", \"ttl\": %u}]},\n",
 		addrstr, ts, port,
-		proto == OUTPUT_PROTO_TCP ? "tcp" : "udp",
-		status == OUTPUT_STATUS_OPEN ? "open" : "closed", ttl
+		proto == OUTPUT_PROTO_TCP ? "tcp" : (proto == OUTPUT_PROTO_UDP ? "udp" : "icmp"),
+		status == OUTPUT_STATUS_OPEN ? "open" : (status == OUTPUT_STATUS_CLOSED ? "closed" : "up"),
+		ttl
 	);
 }
 

@@ -15,6 +15,7 @@
 #include "rawsock.h"
 #include "tcp.h"
 #include "udp.h"
+#include "icmp.h"
 #include "banner.h"
 
 static uint8_t source_addr[16];
@@ -33,11 +34,13 @@ static bool send_finished;
 static inline int source_port_rand(void);
 static void *send_thread(void *unused);
 static void *send_thread_udp(void *unused);
+static void *send_thread_icmp(void *unused);
 
 static void *recv_thread(void *unused);
 static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
 static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
 static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
+static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
 
 #if ATOMIC_INT_LOCK_FREE != 2
 #warning Non lock-free atomic types will severely affect performance.
@@ -81,10 +84,12 @@ int scan_main(const char *interface, int quiet)
 	}
 	if(!banners && ip_type == IP_TYPE_UDP && !quiet)
 		fprintf(stderr, "Warning: UDP scans don't make sense without banners enabled.\n");
+	if(banners && ip_type == IP_TYPE_ICMPV6 && !quiet)
+		fprintf(stderr, "Warning: Enabling banners is a no-op for ICMP scans.\n");
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
-	if(source_port != -1)
+	if(source_port != -1 && ip_type != IP_TYPE_ICMPV6)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
 	if(rawsock_setfilter(fflags, ip_type, source_addr, source_port) < 0)
 		goto err;
@@ -97,8 +102,17 @@ int scan_main(const char *interface, int quiet)
 	if(pthread_create(&tr, NULL, recv_thread, NULL) < 0)
 		goto err;
 	pthread_detach(tr);
-	if(pthread_create(&ts, NULL, ip_type == IP_TYPE_UDP ? send_thread_udp : send_thread, NULL) < 0)
-		goto err;
+	do {
+		int r;
+		if(ip_type == IP_TYPE_TCP)
+			r = pthread_create(&ts, NULL, send_thread, NULL);
+		else if(ip_type == IP_TYPE_UDP)
+			r = pthread_create(&ts, NULL, send_thread_udp, NULL);
+		else // IP_TYPE_ICMPV6
+			r = pthread_create(&ts, NULL, send_thread_icmp, NULL);
+		if(r < 0)
+			goto err;
+	} while(0);
 	pthread_detach(ts);
 
 	// Stats & progress watching
@@ -106,8 +120,8 @@ int scan_main(const char *interface, int quiet)
 		unsigned int cur_sent, cur_recv;
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
-		float progress = target_gen_progress();
 		if(!quiet) {
+			float progress = target_gen_progress();
 			if(progress < 0.0f)
 				fprintf(stderr, "snt:%4u rcv:%4u p:???%%\r", cur_sent, cur_recv);
 			else
@@ -176,7 +190,6 @@ static void *send_thread(void *unused)
 
 		// Rate control
 		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
-			// FIXME: this doesn't seem like a good idea
 			do
 				usleep(1000);
 			while(atomic_load(&pkts_sent) != 0);
@@ -233,11 +246,48 @@ static void *send_thread_udp(void *unused)
 
 		// Rate control
 		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
-			// FIXME: this doesn't seem like a good idea
 			do
 				usleep(1000);
 			while(atomic_load(&pkts_sent) != 0);
 		}
+	}
+
+	send_finished = true;
+	return NULL;
+}
+
+static void *send_thread_icmp(void *unused)
+{
+	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE];
+	uint8_t dstaddr[16];
+
+	(void) unused;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
+	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
+	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_ICMPV6);
+	if(target_gen_next(dstaddr) < 0)
+		return NULL;
+	rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
+	ICMP_HEADER(packet)->type = 128; // Echo Request
+	ICMP_HEADER(packet)->code = 0;
+	ICMP_HEADER(packet)->body32 = 0;
+
+	while(1) {
+		icmp_checksum(IP_FRAME(packet), ICMP_HEADER(packet), 0);
+		rawsock_send(packet, sizeof(packet));
+
+		// Rate control
+		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
+			do
+				usleep(1000);
+			while(atomic_load(&pkts_sent) != 0);
+		}
+
+		// Next target
+		if(target_gen_next(dstaddr) < 0)
+			break;
+		rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	}
 
 	send_finished = true;
@@ -283,8 +333,10 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	// handle
 	if(ip_type == IP_TYPE_TCP)
 		recv_handler_tcp(ts, len, packet, csrcaddr);
-	else
+	else if(ip_type == IP_TYPE_UDP)
 		recv_handler_udp(ts, len, packet, csrcaddr);
+	else // IP_TYPE_ICMPV6
+		recv_handler_icmp(ts, len, packet, csrcaddr);
 
 	return;
 	perr: ;
@@ -348,6 +400,25 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 	perr: ;
 #ifndef NDEBUG
 	fprintf(stderr, "Failed to decode UDP packet of length %d\n", len);
+#endif
+}
+
+static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+{
+	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE)
+		goto perr;
+
+	if(ICMP_HEADER(packet)->type != 129) // Echo Reply
+		return;
+
+	int v2;
+	rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
+	outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_ICMP, 0, v2, OUTPUT_STATUS_UP);
+
+	return;
+	perr: ;
+#ifndef NDEBUG
+	fprintf(stderr, "Failed to decode ICMPv6 packet of length %d\n", len);
 #endif
 }
 

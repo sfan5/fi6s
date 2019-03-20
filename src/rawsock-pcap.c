@@ -54,9 +54,16 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_
 
 	strncpy(fstr, "ip6", sizeof(fstr));
 	if(flags & RAWSOCK_FILTER_IPTYPE) {
-		if(iptype != IP_TYPE_TCP && iptype != IP_TYPE_UDP)
+		char *tmp;
+		if(iptype == IP_TYPE_TCP)
+			tmp = "tcp";
+		else if(iptype == IP_TYPE_UDP)
+			tmp = "udp";
+		else if(iptype == IP_TYPE_ICMPV6)
+			tmp = "icmp6";
+		else
 			return -1;
-		snprintf_append(fstr, " and %s", (iptype == IP_TYPE_TCP)?"tcp":"udp");
+		snprintf_append(fstr, " and %s", tmp);
 	}
 	if(flags & RAWSOCK_FILTER_DSTADDR) {
 		char tmp[IPV6_STRING_MAX];
@@ -67,6 +74,7 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_
 		snprintf_append(fstr, " and dst port %d", dstport);
 	}
 
+	//printf("pcap filter: %s\n", fstr);
 	if(pcap_compile(handle, &fp, fstr, 0, PCAP_NETMASK_UNKNOWN) == -1) {
 		fprintf(stderr, "Failed to compile filter expression: %s\n", pcap_geterr(handle));
 		return -1;

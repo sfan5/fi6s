@@ -37,6 +37,7 @@ int main(int argc, char *argv[])
 		{"source-port", required_argument, 0, 2006},
 		{"ttl", required_argument, 0, 2007},
 		{"stream-targets", no_argument, 0, 2008},
+		{"icmp", no_argument, 0, 2009},
 
 		{"output-format", required_argument, 0, 3000},
 		{"show-closed", no_argument, 0, 3001},
@@ -153,6 +154,9 @@ int main(int argc, char *argv[])
 			}
 			case 2008:
 				stream_targets = 1;
+				break;
+			case 2009:
+				ip_type = IP_TYPE_ICMPV6;
 				break;
 
 			case 3000:
@@ -319,7 +323,7 @@ skip_parsing: ;
 			missing = "--router-mac";
 		else if(is_all_ff(source_addr, 16))
 			missing = "--source-ip";
-		else if(!validate_ports(&ports))
+		else if(ip_type != IP_TYPE_ICMPV6 && !validate_ports(&ports))
 			missing = "-p";
 		else if(banners && ip_type == IP_TYPE_TCP && source_port == -1)
 			missing = "--source-port";
@@ -364,6 +368,7 @@ static void usage(void)
 	printf("  -p <ranges>             Specify port range(s) to scan\n");
 	printf("  --banners               Capture banners\n");
 	printf("  -u                      UDP scan\n");
+	printf("  --icmp                  ICMPv6 echo scan\n");
 	printf("  -q                      Do not output periodic status message\n");
 	printf("Output options:\n");
 	printf("  -o <file>               Set output file\n");

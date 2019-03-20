@@ -28,6 +28,7 @@ int scan_reader_main(FILE *infile);
 #define IP_FRAME(buf) ( (struct frame_ip*) &(buf)[FRAME_ETH_SIZE] )
 #define TCP_HEADER(buf) ( (struct tcp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
 #define UDP_HEADER(buf) ( (struct udp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
+#define ICMP_HEADER(buf) ( (struct icmp_header*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE] )
 #define TCP_DATA(buf, data_offset) ( (uint8_t*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE + data_offset] )
 #define UDP_DATA(buf) TCP_DATA(buf, UDP_HEADER_SIZE)
 

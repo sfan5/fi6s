@@ -7,11 +7,13 @@
 enum {
 	OUTPUT_STATUS_OPEN = 0,
 	OUTPUT_STATUS_CLOSED,
+	OUTPUT_STATUS_UP,
 };
 
 enum {
 	OUTPUT_PROTO_TCP = 0,
 	OUTPUT_PROTO_UDP,
+	OUTPUT_PROTO_ICMP,
 };
 
 struct outputdef {

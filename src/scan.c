@@ -21,7 +21,8 @@ static uint8_t source_addr[16];
 static int source_port;
 //
 static struct ports ports;
-static int max_rate, show_closed, banners, udp;
+static int max_rate, show_closed, banners;
+static uint8_t ip_type;
 //
 static FILE *outfile;
 static struct outputdef outdef;
@@ -52,11 +53,11 @@ void scan_set_general(const struct ports *_ports, int _max_rate, int _show_close
 	banners = _banners;
 }
 
-void scan_set_network(const uint8_t *_source_addr, int _source_port, int _ip_type)
+void scan_set_network(const uint8_t *_source_addr, int _source_port, uint8_t _ip_type)
 {
 	memcpy(source_addr, _source_addr, 16);
 	source_port = _source_port;
-	udp = _ip_type == IP_TYPE_UDP;
+	ip_type = _ip_type;
 }
 
 void scan_set_output(FILE *_outfile, const struct outputdef *_outdef)
@@ -72,20 +73,20 @@ int scan_main(const char *interface, int quiet)
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	send_finished = false;
-	if(banners && !udp) {
+	if(banners && ip_type == IP_TYPE_TCP) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
 			goto err;
 		if(tcp_state_init() < 0)
 			goto err;
 	}
-	if(!banners && udp && !quiet)
-		fprintf(stderr, "Warning: UDP scans don't really make sense without banners.\n");
+	if(!banners && ip_type == IP_TYPE_UDP && !quiet)
+		fprintf(stderr, "Warning: UDP scans don't make sense without banners enabled.\n");
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
 	if(source_port != -1)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
-	if(rawsock_setfilter(fflags, udp ? IP_TYPE_UDP : IP_TYPE_TCP, source_addr, source_port) < 0)
+	if(rawsock_setfilter(fflags, ip_type, source_addr, source_port) < 0)
 		goto err;
 
 	// Write output file header
@@ -96,7 +97,7 @@ int scan_main(const char *interface, int quiet)
 	if(pthread_create(&tr, NULL, recv_thread, NULL) < 0)
 		goto err;
 	pthread_detach(tr);
-	if(pthread_create(&ts, NULL, udp ? send_thread_udp : send_thread, NULL) < 0)
+	if(pthread_create(&ts, NULL, ip_type == IP_TYPE_UDP ? send_thread_udp : send_thread, NULL) < 0)
 		goto err;
 	pthread_detach(ts);
 
@@ -122,7 +123,7 @@ int scan_main(const char *interface, int quiet)
 	fprintf(stderr, "\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
 	usleep(FINISH_WAIT_TIME * 1000 * 1000);
 	rawsock_breakloop();
-	if(banners && !udp)
+	if(banners && ip_type == IP_TYPE_TCP)
 		scan_responder_finish();
 	if(!quiet)
 		fprintf(stderr, "rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
@@ -263,7 +264,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	atomic_fetch_add(&pkts_recv, 1);
 	//printf("<< @%lu -- %d bytes\n", ts, len);
 
-	// Decode
+	// decode
 	if(rawsock_has_ethernet_headers()) {
 		if(len < FRAME_ETH_SIZE)
 			goto perr;
@@ -276,11 +277,11 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
 		goto perr;
 	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);
-	uint8_t expect = udp ? IP_TYPE_UDP : IP_TYPE_TCP;
-	if(v != expect)
+	if(v != ip_type) // is this the ip type we expect?
 		goto perr;
 
-	if(!udp)
+	// handle
+	if(ip_type == IP_TYPE_TCP)
 		recv_handler_tcp(ts, len, packet, csrcaddr);
 	else
 		recv_handler_udp(ts, len, packet, csrcaddr);
@@ -288,7 +289,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	return;
 	perr: ;
 #ifndef NDEBUG
-	fprintf(stderr, "Failed to decode packet of length %d\n", len);
+	fprintf(stderr, "Failed to decode a packet of length %d\n", len);
 #endif
 }
 

@@ -10,6 +10,7 @@
 #define ETH_TYPE_IPV6 0x86dd
 #define IP_TYPE_TCP 0x06
 #define IP_TYPE_UDP 0x11
+#define IP_TYPE_ICMPV6 0x3a
 
 #define RAWSOCK_FILTER_IPTYPE  (1 << 0)
 #define RAWSOCK_FILTER_DSTADDR (1 << 1)

@@ -14,7 +14,7 @@
 #include "output.h"
 
 static void usage(void);
-static bool is_allFF(const uint8_t *buf, int len);
+static inline bool is_all_ff(const uint8_t *buf, int len);
 
 enum operating_mode {
 	M_SCAN, M_PRINT_HOSTS,
@@ -52,15 +52,16 @@ int main(int argc, char *argv[])
 		ttl = 64, max_rate = -1,
 		source_port = -1, quiet = 0,
 		show_closed = 0, banners = 0,
-		udp = 0, stream_targets = 0;
+		stream_targets = 0;
 	enum operating_mode mode;
-	uint8_t source_mac[6], router_mac[6], source_addr[16];
+	uint8_t ip_type, source_mac[6], router_mac[6], source_addr[16];
 	char *interface;
 	struct ports ports;
 	FILE *outfile, *readscan;
 	const struct outputdef *outdef;
 
 	mode = M_SCAN;
+	ip_type = IP_TYPE_TCP;
 	interface = NULL; // automatically picked
 	outfile = stdout;
 	outdef = &output_list;
@@ -195,7 +196,7 @@ int main(int argc, char *argv[])
 				banners = 1;
 				break;
 			case 'u':
-				udp = 1;
+				ip_type = IP_TYPE_UDP;
 				break;
 
 			default:
@@ -214,11 +215,11 @@ int main(int argc, char *argv[])
 				return -1;
 			fprintf(stderr, "Using default interface '%s'\n", interface);
 		}
-		if(is_allFF(source_mac, 6))
+		if(is_all_ff(source_mac, 6))
 			rawsock_getmac(interface, source_mac);
-		if(is_allFF(router_mac, 6))
+		if(is_all_ff(router_mac, 6))
 			rawsock_getgw(interface, router_mac);
-		if(is_allFF(source_addr, 16)) {
+		if(is_all_ff(source_addr, 16)) {
 			struct sockaddr_in6 globaddr = {0};
 			globaddr.sin6_family = AF_INET6;
 			globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
@@ -312,15 +313,15 @@ skip_parsing: ;
 	} else {
 		// complain about missing args
 		const char* missing = NULL;
-		if(is_allFF(source_mac, 6))
+		if(is_all_ff(source_mac, 6))
 			missing = "--source-mac";
-		else if(is_allFF(router_mac, 6))
+		else if(is_all_ff(router_mac, 6))
 			missing = "--router-mac";
-		else if(is_allFF(source_addr, 16))
+		else if(is_all_ff(source_addr, 16))
 			missing = "--source-ip";
 		else if(!validate_ports(&ports))
 			missing = "-p";
-		else if(banners && !udp && source_port == -1)
+		else if(banners && ip_type == IP_TYPE_TCP && source_port == -1)
 			missing = "--source-port";
 
 		if(missing) {
@@ -328,7 +329,7 @@ skip_parsing: ;
 			r = 1;
 		} else {
 			scan_set_general(&ports, max_rate, show_closed, banners);
-			scan_set_network(source_addr, source_port, udp ? IP_TYPE_UDP : IP_TYPE_TCP);
+			scan_set_network(source_addr, source_port, ip_type);
 			scan_set_output(outfile, outdef);
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
@@ -362,6 +363,7 @@ static void usage(void)
 	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (default: 64)\n");
 	printf("  -p <ranges>             Specify port range(s) to scan\n");
 	printf("  --banners               Capture banners\n");
+	printf("  -u                      UDP scan\n");
 	printf("  -q                      Do not output periodic status message\n");
 	printf("Output options:\n");
 	printf("  -o <file>               Set output file\n");
@@ -395,7 +397,7 @@ static void usage(void)
 	printf("      Scan with closed ports enabled, gives the same results as above.\n");
 }
 
-static bool is_allFF(const uint8_t *buf, int len)
+static inline bool is_all_ff(const uint8_t *buf, int len)
 {
 	while(len--) {
 		if(*(buf++) != 0xff)

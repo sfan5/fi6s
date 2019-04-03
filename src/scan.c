@@ -271,7 +271,7 @@ static void *send_thread_icmp(void *unused)
 	rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	ICMP_HEADER(packet)->type = 128; // Echo Request
 	ICMP_HEADER(packet)->code = 0;
-	ICMP_HEADER(packet)->body32 = 0;
+	ICMP_HEADER(packet)->body32 = ICMP_BODY;
 
 	while(1) {
 		icmp_checksum(IP_FRAME(packet), ICMP_HEADER(packet), 0);
@@ -409,6 +409,8 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 		goto perr;
 
 	if(ICMP_HEADER(packet)->type != 129) // Echo Reply
+		return;
+	if(ICMP_HEADER(packet)->body32 != ICMP_BODY)
 		return;
 
 	int v2;

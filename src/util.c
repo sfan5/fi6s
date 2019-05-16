@@ -1,10 +1,10 @@
-#define _DEFAULT_SOURCE // htobe16()
-#define _GNU_SOURCE // strchrnul()
+#define _DEFAULT_SOURCE // htobe16
+#define _GNU_SOURCE // strchrnul
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h> // isdigit()
-#include <endian.h>
+#include "os-endian.h"
 #include <assert.h>
 
 #include "util.h"

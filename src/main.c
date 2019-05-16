@@ -6,6 +6,7 @@
 #include <time.h> // time()
 #include <getopt.h>
 #include <netinet/in.h> // struct sockaddr_in6, AF_INET6
+#include <sys/socket.h>
 
 #include "util.h"
 #include "target.h"

@@ -8,19 +8,24 @@ typedef unsigned char u_char;
 typedef unsigned short u_short;
 typedef unsigned int u_int;
 #include <pcap.h>
-#include <net/if.h>
 #include <sys/socket.h>
+
+#ifdef __linux__
+#include <net/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/neighbour.h>
+#endif
 
 #include "rawsock.h"
 #include "util.h"
 
-#define READ_BUFFER_SIZE (64*1024*1024) // 64 KiB
+#ifdef __linux__
+#define NL_READ_BUFFER_SIZE (64*1024*1024) // 64 KiB
 
 static int netlink_read(int sock, char *buf, int bufsz);
 static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac);
+#endif
 
 int rawsock_getdev(char **dev)
 {
@@ -34,11 +39,12 @@ int rawsock_getdev(char **dev)
 
 int rawsock_getgw(const char *dev, uint8_t *mac)
 {
+#ifdef __linux__
 	int sock;
 	char *buf;
 	struct nlmsghdr *msg;
 
-	buf = calloc(1, READ_BUFFER_SIZE);
+	buf = calloc(1, NL_READ_BUFFER_SIZE);
 	if(!buf) {
 		return -1;
 	}
@@ -51,7 +57,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 	}
 
 	// Ask for all routes
-	memset(buf, 0, READ_BUFFER_SIZE);
+	memset(buf, 0, NL_READ_BUFFER_SIZE);
 	msg = (struct nlmsghdr*) buf;
 	msg->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	msg->nlmsg_type = RTM_GETROUTE;
@@ -65,7 +71,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 		return -1;
 	}
 
-	int len = netlink_read(sock, buf, READ_BUFFER_SIZE);
+	int len = netlink_read(sock, buf, NL_READ_BUFFER_SIZE);
 	if(len == -1)
 		return -1;
 	// Process each answer msg
@@ -127,14 +133,19 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 	close(sock);
 	free(buf);
 	return success ? 0 : -1;
+#else
+	(void) dev, (void) mac;
+	return -1;
+#endif
 }
 
+#ifdef __linux__
 static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac)
 {
 	struct nlmsghdr *msg;
 
 	// Ask for all neighbors
-	memset(buf, 0, READ_BUFFER_SIZE);
+	memset(buf, 0, NL_READ_BUFFER_SIZE);
 	msg = (struct nlmsghdr*) buf;
 	msg->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	msg->nlmsg_type = RTM_GETNEIGH;
@@ -146,7 +157,7 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 		return -1;
 	}
 
-	int len = netlink_read(sock, buf, READ_BUFFER_SIZE);
+	int len = netlink_read(sock, buf, NL_READ_BUFFER_SIZE);
 	if(len == -1)
 		return -1;
 	// Process each answer msg
@@ -182,10 +193,11 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 
 	return -1;
 }
-
+#endif
 
 int rawsock_getmac(const char *dev, uint8_t *mac)
 {
+#ifdef __linux__
 	FILE *f;
 	char buf[64];
 
@@ -197,6 +209,10 @@ int rawsock_getmac(const char *dev, uint8_t *mac)
 	int rd = fread(buf, 1, sizeof(buf), f);
 	fclose(f);
 	return rd > 0 ? parse_mac(buf, mac) : -1;
+#else
+	(void) dev, (void) mac;
+	return -1;
+#endif
 }
 
 int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip)
@@ -224,6 +240,7 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip)
 	return ret;
 }
 
+#ifdef __linux__
 static int netlink_read(int sock, char *buf, int bufsz)
 {
 	struct nlmsghdr *msg;
@@ -262,3 +279,4 @@ static int netlink_read(int sock, char *buf, int bufsz)
 
 	return have;
 }
+#endif

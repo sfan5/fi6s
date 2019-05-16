@@ -15,7 +15,7 @@ Building is fairly easy on any recent Linux system, e.g. on Ubuntu:
 	$ make BUILD_TYPE=release
 
 The scanner executable will be ready in at `./fi6s`.
-Note that fi6s is developed solely on Linux, thus it probably won't compile on non-Linux OSs (notably Windows).
+Note that fi6s is developed and tested solely on Linux, don't expect it to work on non UNIX-like platforms (Windows).
 
 ## Usage
 

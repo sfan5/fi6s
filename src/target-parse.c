@@ -1,6 +1,6 @@
 #define _GNU_SOURCE // strchrnul()
 #include <string.h>
-#include <endian.h>
+#include "os-endian.h"
 
 #include "target.h"
 #include "util.h"

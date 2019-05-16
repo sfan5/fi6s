@@ -1,6 +1,6 @@
-#define _DEFAULT_SOURCE // htobe16()
+#define _DEFAULT_SOURCE // htobe16
 #include <string.h>
-#include <endian.h>
+#include "os-endian.h"
 
 #include "rawsock.h"
 

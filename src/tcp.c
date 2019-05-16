@@ -1,6 +1,6 @@
 #define _DEFAULT_SOURCE // htobe16, htobe32
 #include <string.h>
-#include <endian.h>
+#include "os-endian.h"
 
 #include "tcp.h"
 #include "util.h"

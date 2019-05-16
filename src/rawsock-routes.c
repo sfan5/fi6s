@@ -69,7 +69,6 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 	if(len == -1)
 		return -1;
 	// Process each answer msg
-	char ifname[IF_NAMESIZE] = {0};
 	uint8_t gateway_ip[16];
 	int success = 0;
 	for(; NLMSG_OK(msg, len); msg = NLMSG_NEXT(msg, len)) {
@@ -77,18 +76,27 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 		if(rtm->rtm_family != AF_INET6 || rtm->rtm_table != RT_TABLE_MAIN)
 			continue;
 
-		struct rtattr *rta = (struct rtattr*) RTM_RTA(rtm);
-		int rtlen = RTM_PAYLOAD(msg);
-		// Process each attribute
+		struct rtattr *rta;
+		int rtlen;
+
+		// First, check if this is the right interface
+		char ifname[IF_NAMESIZE] = {0};
+		rta = (struct rtattr*) RTM_RTA(rtm);
+		rtlen = RTM_PAYLOAD(msg);
 		for(; RTA_OK(rta, rtlen); rta = RTA_NEXT(rta, rtlen)) {
-			// check that we have the right interface
 			if(rta->rta_type == RTA_OIF)
 				if_indextoname(*(int*) RTA_DATA(rta), ifname);
-			if(strcmp(ifname, dev) != 0)
-				continue;
+		}
+		if(strcmp(ifname, dev) != 0)
+			continue;
 
+		// Process each attribute
+		rta = (struct rtattr*) RTM_RTA(rtm);
+		rtlen = RTM_PAYLOAD(msg);
+		for(; RTA_OK(rta, rtlen); rta = RTA_NEXT(rta, rtlen)) {
 			if(rta->rta_type != RTA_GATEWAY)
 				continue;
+
 			uint8_t *addr = (uint8_t*) RTA_DATA(rta);
 			memcpy(gateway_ip, addr, 16);
 			success |= 1;
@@ -152,6 +160,7 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 
 		struct rtattr *rta = (struct rtattr*) RTM_RTA(ndm);
 		int rtlen = RTM_PAYLOAD(msg);
+
 		// Process each attribute
 		uint8_t temp_mac[6];
 		int success = 0;
@@ -220,7 +229,7 @@ static int netlink_read(int sock, char *buf, int bufsz)
 	struct nlmsghdr *msg;
 	int have = 0;
 
-	// Have I mentioned that netlink has a horrible interface?
+	// have I mentioned that netlink has a horrible interface?
 	while(1) {
 		int len = recv(sock, buf, bufsz - have, 0);
 		if(len == -1) {
@@ -237,7 +246,7 @@ static int netlink_read(int sock, char *buf, int bufsz)
 			return -1;
 
 		if(msg->nlmsg_seq != 0 || msg->nlmsg_pid != getpid())
-			continue; // msg not for us
+			continue; // not the one we want
 		if(msg->nlmsg_type == NLMSG_ERROR) {
 			struct nlmsgerr *err = (struct nlmsgerr*) NLMSG_DATA(msg);
 			fprintf(stderr, "netlink reports error %d\n", err->error);

@@ -59,7 +59,7 @@ const char *banner_get_query(uint8_t ip_type, int port, unsigned int *len)
 	switch(port) {
 		case 53: {
 			int skip = ip_type == IP_TYPE_UDP ? 2 : 0;
-			*len = sizeof(dns) - skip - 1; // mind the null byte!
+			*len = sizeof(dns) - skip - 1;
 			return &dns[skip];
 		}
 	}
@@ -106,14 +106,14 @@ static const char *get_query_tcp(int port, unsigned int *len)
 
 	switch(port) {
 		case 21:
-			*len = strlen(ftp);
+			*len = sizeof(ftp) - 1;
 			return ftp;
 		case 80:
 		case 8080:
-			*len = strlen(http);
+			*len = sizeof(http) - 1;
 			return http;
 		case 1723:
-			*len = sizeof(pptp) - 1; // mind the null byte!
+			*len = sizeof(pptp) - 1;
 			return pptp;
 		default:
 			*len = 0; // send nothing
@@ -197,16 +197,16 @@ static const char *get_query_udp(int port, unsigned int *len)
 
 	switch(port) {
 		case 161:
-			*len = sizeof(snmp) - 1; // mind the null byte!
+			*len = sizeof(snmp) - 1;
 			return snmp;
 		case 500:
 		case 4500: {
 			int skip = port == 4500 ? 0 : 4;
-			*len = sizeof(ike) - skip - 1; // mind the null byte!
+			*len = sizeof(ike) - skip - 1;
 			return &ike[skip];
 		}
 		case 5060:
-			*len = strlen(sip);
+			*len = sizeof(sip) - 1;
 			return sip;
 		default:
 			return NULL;

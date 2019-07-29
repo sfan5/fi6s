@@ -38,7 +38,7 @@ static unsigned int targets_i, targets_size;
 
 int target_gen_init(void)
 {
-	cache = malloc(16*TARGET_RANDOMIZE_SIZE);
+	cache = calloc(16, TARGET_RANDOMIZE_SIZE);
 	if(!cache)
 		abort();
 	cache_i = 0;
@@ -173,7 +173,7 @@ void target_gen_print_summary(int max_rate, int nports)
 			smallest = maskbits;
 	}
 
-	printf("%d target(s) loaded, covering %" PRId64 " addresses.\n", targets_i, total);
+	printf("%d target(s) loaded, covering %" PRIu64 " addresses.\n", targets_i, total);
 	printf("Largest target equivalent to /%d subnet, smallest eq. /%d.\n", largest, smallest);
 
 	if(max_rate != -1) {
@@ -216,14 +216,14 @@ static uint64_t rand64()
 	uint64_t ret = 0;
 #if RAND_MAX >= INT32_MAX
 	// only 62-bits of randomness, but this is good enough
-	ret |= ((uint64_t) rand()) << 31;
-	ret |= (uint64_t) rand();
+	ret ^= ((uint64_t) rand()) << 31;
+	ret ^= (uint64_t) rand();
 #elif RAND_MAX >= INT16_MAX
 	// only 60-bits of randomness, but this is good enough
-	ret |= ((uint64_t) rand()) << 45;
-	ret |= ((uint64_t) rand()) << 30;
-	ret |= ((uint64_t) rand()) << 15;
-	ret |= (uint64_t) rand();
+	ret ^= ((uint64_t) rand()) << 45;
+	ret ^= ((uint64_t) rand()) << 30;
+	ret ^= ((uint64_t) rand()) << 15;
+	ret ^= (uint64_t) rand();
 #else
 #error built-in rand() does not provide enough randomness.
 #endif

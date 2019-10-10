@@ -265,7 +265,7 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 		offset = s->max_rseqnum - s->first_rseqnum;
 		// seqnum discontinuity, fill the hole with zeros.
 		// the previous packet might still arrive and fill the hole,
-		// but if it doesn't we don't uninitialized data lying around.
+		// but if it doesn't we don't want uninitialized data lying around.
 #ifndef NDEBUG
 		fprintf(stderr, "WARNING: Discontinuity in TCP seqnums (missing %d) in state [%d]\n", count, p->i);
 #endif

@@ -17,7 +17,7 @@ static struct {
 	const struct outputdef *outdef;
 	uint16_t source_port;
 
-	uint8_t _Alignas(long int) buffer[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
+	uint8_t _Alignas(uint32_t) buffer[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
 
 	pthread_t tcp_thread;
 	bool tcp_thread_exit;
@@ -210,7 +210,7 @@ static void *tcp_thread(void *unused)
 			// terminate connection if needed
 			if(!have_fin) {
 				const int packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE;
-				uint8_t _Alignas(long int) packet[packet_sz];
+				uint8_t _Alignas(uint32_t) packet[packet_sz];
 				// The "global" packet buffer is in use by another thread, so
 				// we can't write but still copy the prepared structure from there
 				memcpy(packet, responder.buffer, packet_sz);

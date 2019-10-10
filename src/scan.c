@@ -22,7 +22,8 @@ static uint8_t source_addr[16];
 static int source_port;
 //
 static struct ports ports;
-static int max_rate, show_closed, banners;
+static unsigned int max_rate;
+static int show_closed, banners;
 static uint8_t ip_type;
 //
 static FILE *outfile;
@@ -51,7 +52,7 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 void scan_set_general(const struct ports *_ports, int _max_rate, int _show_closed, int _banners)
 {
 	memcpy(&ports, _ports, sizeof(struct ports));
-	max_rate = _max_rate == -1 ? INT_MAX : _max_rate - 1;
+	max_rate = _max_rate < 0 ? UINT_MAX : _max_rate - 1;
 	show_closed = _show_closed;
 	banners = _banners;
 }
@@ -158,7 +159,7 @@ int scan_main(const char *interface, int quiet)
 
 static void *send_thread(void *unused)
 {
-	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
+	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
 	uint8_t dstaddr[16];
 	struct ports_iter it;
 
@@ -202,7 +203,7 @@ static void *send_thread(void *unused)
 
 static void *send_thread_udp(void *unused)
 {
-	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
+	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
 	uint8_t dstaddr[16];
 	struct ports_iter it;
 
@@ -258,7 +259,7 @@ static void *send_thread_udp(void *unused)
 
 static void *send_thread_icmp(void *unused)
 {
-	uint8_t _Alignas(long int) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE];
+	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE];
 	uint8_t dstaddr[16];
 
 	(void) unused;

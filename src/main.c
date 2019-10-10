@@ -394,16 +394,13 @@ static void usage(void)
 	printf("  if you want to scan multiple targets pass @/path/to/list_of_targets.txt to fi6s.\n");
 	printf("\n");
 	printf("The \"binary\" output format:\n");
-	printf("  When saving as binary output, banners will not be decoded or modified\n");
-	printf("  during scanning and are written to the file in full.\n");
-	printf("  These binary scans can then be read (and decoded) again afterwards\n");
-	printf("  and be output in any desired output format.\n");
-	printf("  Options such as --banners and --show-closed are applied both during scanning and reading.\n");
-	printf("  For example, both given invocations are equivalent in the kind of output they produce:\n");
-	printf("    fi6s -o scan.bin --output-format binary -b --show-closed 2001:db8::xx && fi6s -o final.txt --show-closed --readscan scan.bin\n");
-	printf("      First, scan the given subnet with banners and closed ports enabled. Second, filter banners but output closed ports.\n");
-	printf("    fi6s -o final.txt --show-closed 2001:db8::xx\n");
-	printf("      Scan with closed ports enabled.\n");
+	printf("  When saving as binary output, banners will not be decoded during scanning and are saved verbatim.\n");
+	printf("  Binary scan files can be read again afterwards and converted to any desired output format.\n");
+	printf("  When reading binary scans, the --banners and --show-closed options are also applied\n");
+	printf("  and can be used to select which data is shown.\n");
+	printf("  For example, you could perform a scan that captures banners but only extract open/closed ports:\n");
+	printf("    $ fi6s -o scan.bin --output-format binary -b 2001:db8::xx\n");
+	printf("    $ fi6s --readscan scan.bin --show-closed\n");
 }
 
 static inline bool is_all_ff(const uint8_t *buf, int len)

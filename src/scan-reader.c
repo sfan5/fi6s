@@ -63,15 +63,14 @@ int scan_reader_main(FILE *infile)
 
 			if(!banners)
 				continue;
-			if(outdef.postprocess) {
+			if(!outdef.raw) {
 				uint8_t ip_type = proto == OUTPUT_PROTO_TCP ? IP_TYPE_TCP : IP_TYPE_UDP;
 				banner_postprocess(ip_type, h.port, data, &data_length);
 			}
 			outdef.output_banner(outfile, h.timestamp, h.addr, proto, h.port, data, data_length);
 		} else {
-			if(!show_closed && status == OUTPUT_STATUS_CLOSED)
-				continue;
-			outdef.output_status(outfile, h.timestamp, h.addr, proto, h.port, h.ttl, status);
+			if(outdef.raw || show_closed || status != OUTPUT_STATUS_CLOSED)
+				outdef.output_status(outfile, h.timestamp, h.addr, proto, h.port, h.ttl, status);
 		}
 	}
 	outdef.end(outfile);

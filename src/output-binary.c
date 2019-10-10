@@ -61,5 +61,5 @@ const struct outputdef output_binary = {
 	.output_status = &status,
 	.output_banner = &banner,
 	.end = &end,
-	.postprocess = 0,
+	.raw = 1,
 };

@@ -82,5 +82,5 @@ const struct outputdef output_json = {
 	.output_status = &status,
 	.output_banner = &banner,
 	.end = &end,
-	.postprocess = 1,
+	.raw = 0,
 };

@@ -356,7 +356,7 @@ static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const 
 		tcp_decode(TCP_HEADER(packet), &v, NULL);
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
 		int st = TCP_HEADER(packet)->f_syn ? OUTPUT_STATUS_OPEN : OUTPUT_STATUS_CLOSED;
-		if(show_closed || (!show_closed && TCP_HEADER(packet)->f_syn))
+		if(outdef.raw || show_closed || TCP_HEADER(packet)->f_syn)
 			outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, st);
 	}
 	// Pass packet to responder
@@ -392,7 +392,7 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 		plen = BANNER_MAX_LENGTH;
 	char temp[BANNER_MAX_LENGTH];
 	memcpy(temp, UDP_DATA(packet), plen);
-	if(outdef.postprocess)
+	if(!outdef.raw)
 		banner_postprocess(IP_TYPE_UDP, v, temp, &plen);
 	outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, temp, plen);
 

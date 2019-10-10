@@ -75,5 +75,5 @@ const struct outputdef output_list = {
 	.output_status = &status,
 	.output_banner = &banner,
 	.end = &end,
-	.postprocess = 1,
+	.raw = 0,
 };

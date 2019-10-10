@@ -202,7 +202,7 @@ static void *tcp_thread(void *unused)
 
 			if(len > 0) {
 				// output banner to file
-				if(responder.outdef->postprocess)
+				if(!responder.outdef->raw)
 					banner_postprocess(IP_TYPE_TCP, srcport, buf, &len);
 				responder.outdef->output_banner(responder.outfile, ts, srcaddr, OUTPUT_PROTO_TCP, srcport, buf, len);
 			}

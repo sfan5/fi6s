@@ -84,9 +84,9 @@ int main(int argc, char *argv[])
 			return 1;
 		switch(c) {
 			case 1000: {
-				FILE *f = fopen(optarg, "rb");
+				FILE *f = strcmp(optarg, "-") == 0 ? stdin : fopen(optarg, "rb");
 				if(!f) {
-					printf("Failed to open scan file for reading.\n");
+					printf("Failed to open scan file for reading\n");
 					return 1;
 				}
 				readscan = f;
@@ -188,9 +188,9 @@ int main(int argc, char *argv[])
 				}
 				break;
 			case 'o': {
-				FILE *f = fopen(optarg, "wb");
+				FILE *f = strcmp(optarg, "-") == 0 ? stdout : fopen(optarg, "wb");
 				if(!f) {
-					printf("Failed to open output file for writing.\n");
+					printf("Failed to open output file for writing\n");
 					return 1;
 				}
 				outfile = f;

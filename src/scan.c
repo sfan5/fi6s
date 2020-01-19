@@ -124,9 +124,9 @@ int scan_main(const char *interface, int quiet)
 		if(!quiet) {
 			float progress = target_gen_progress();
 			if(progress < 0.0f)
-				fprintf(stderr, "snt:%4u rcv:%4u p:???%%\r", cur_sent, cur_recv);
+				fprintf(stderr, "snt:%5u rcv:%5u p:???%%\r", cur_sent, cur_recv);
 			else
-				fprintf(stderr, "snt:%4u rcv:%4u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
+				fprintf(stderr, "snt:%5u rcv:%5u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
 		}
 		if(send_finished)
 			break;
@@ -141,7 +141,7 @@ int scan_main(const char *interface, int quiet)
 	if(banners && ip_type == IP_TYPE_TCP)
 		scan_responder_finish();
 	if(!quiet)
-		fprintf(stderr, "rcv:%4u\n", atomic_exchange(&pkts_recv, 0));
+		fprintf(stderr, "rcv:%5u\n", atomic_exchange(&pkts_recv, 0));
 
 	// Write output file footer
 	outdef.end(outfile);

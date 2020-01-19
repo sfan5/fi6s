@@ -65,7 +65,7 @@ float target_gen_progress(void)
 	if(mode_streaming)
 		return -1.0f;
 
-	// What we do here is beyond horrible:
+	// Since we have no feedback from the scanner, we do something pretty bad:
 	// We go through the bitmasks and assemble the number of hosts total and done
 	// Those are added together and used to calculate the percentage (don't forget the cache though)
 	// It only took two^Wthree tries to get this right!
@@ -177,7 +177,7 @@ void target_gen_print_summary(int max_rate, int nports)
 	printf("Largest target equivalent to /%d subnet, smallest eq. /%d.\n", largest, smallest);
 
 	if(max_rate != -1) {
-		uint32_t dur = total / (unsigned)max_rate;
+		uint32_t dur = total / (unsigned int)max_rate;
 		dur *= nports;
 
 		int n1, n2;
@@ -196,7 +196,11 @@ void target_gen_print_summary(int max_rate, int nports)
 			f1 = "minutes", f2 = "seconds";
 		}
 
-		printf("At %d PPS and %d port(s), estimated scan duration is %d %s %d %s.\n", max_rate, nports, n1, f1, n2, f2);
+		printf("At %d PPS and %d port(s), estimated scan duration is ", max_rate, nports);
+		if(n1 > 0 && n2 == 0)
+			printf("%d %s.\n", n1, f1);
+		else
+			printf("%d %s %d %s.\n", n1, f1, n2, f2);
 	}
 }
 
@@ -295,7 +299,7 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 	// do manual addition on t->cur while ignoring positions set in t->spec.mask
 	int any = 0;
 	for(int i = 15; i >= 0; i--) {
-		for(int j = 1; j != (1 << 8); j <<= 1) {
+		for(unsigned int j = 1; j != (1 << 8); j <<= 1) {
 			if(t->spec.mask[i] & j)
 				continue;
 			any = 1;
@@ -319,7 +323,7 @@ static void progress_single(const struct targetstate *t, uint64_t *total, uint64
 {
 	uint64_t _total = 0, _done = 0;
 	for(int i = 0; i < 16; i++) {
-		for(int j = (1 << 7); j != 0; j >>= 1) {
+		for(unsigned int j = (1 << 7); j != 0; j >>= 1) {
 			if(t->spec.mask[i] & j)
 				continue;
 			_total <<= 1;

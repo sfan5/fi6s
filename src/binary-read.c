@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <arpa/inet.h> // htonl
 
 #include "binary.h"
 
@@ -13,6 +12,14 @@ static inline void skip_align(FILE *f, uint32_t read)
 		fread(junk, RECORD_ALIGN - have, 1, f);
 }
 
+static uint32_t bswap(uint32_t n)
+{
+	return ( (n & 0xff) << 24 ) |
+		( ((n >> 8) & 0xff) << 16 ) |
+		( ((n >> 16) & 0xff) << 8 ) |
+		( ((n >> 24) & 0xff) );
+}
+
 int binary_read_header(struct reader *r, FILE *f)
 {
 	struct file_header h;
@@ -21,7 +28,7 @@ int binary_read_header(struct reader *r, FILE *f)
 	skip_align(f, sizeof(h));
 
 	if(h.magic != FILE_MAGIC) {
-		if(h.magic == htonl(FILE_MAGIC))
+		if(h.magic == bswap(FILE_MAGIC))
 			fprintf(stderr, "This file was created on a system of differing endianness, reading it is not (yet) supported.\n");
 		return -1;
 	}

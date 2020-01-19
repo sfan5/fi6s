@@ -72,8 +72,11 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 	}
 
 	int len = netlink_read(sock, buf, NL_READ_BUFFER_SIZE);
-	if(len == -1)
+	if(len == -1) {
+		close(sock);
+		free(buf);
 		return -1;
+	}
 	// Process each answer msg
 	uint8_t gateway_ip[16];
 	int success = 0;

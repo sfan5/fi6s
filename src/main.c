@@ -219,7 +219,12 @@ int main(int argc, char *argv[])
 	if(mode == M_SCAN) {
 		if(!interface) {
 			if(rawsock_getdev(&interface) < 0)
-				return -1;
+				return 1;
+			if(!interface) { // didn't find one
+				fprintf(stderr, "No default interface found, "
+					"provide one using the --interface option.\n");
+				return 1;
+			}
 			fprintf(stderr, "Using default interface '%s'\n", interface);
 		}
 		if(is_all_ff(source_mac, 6))

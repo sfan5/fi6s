@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,14 +28,37 @@ static int netlink_read(int sock, char *buf, int bufsz);
 static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac);
 #endif
 
-int rawsock_getdev(char **dev)
+int rawsock_getdev(char **out_dev)
 {
 	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_if_t *alldevs, *d;
 
-	*dev = pcap_lookupdev(errbuf);
-	if(!*dev)
-		fprintf(stderr, "Couldn't determine default interface: %s\n", errbuf);
-	return *dev ? 0 : -1;
+	if(pcap_findalldevs(&alldevs, errbuf) != 0) {
+		fprintf(stderr, "pcap_findalldevs: %s\n", errbuf);
+		return -1;
+	}
+
+	// Pick the first device that has a suitable-looking IPv6 address
+	*out_dev = NULL;
+	for(d = alldevs; d; d = d->next) {
+		if(d->flags & PCAP_IF_LOOPBACK)
+			continue;
+		for(pcap_addr_t *a = d->addresses; a; a = a->next) {
+			if(((struct sockaddr*)a->addr)->sa_family != AF_INET6)
+				continue;
+			struct sockaddr_in6 *inaddr = (struct sockaddr_in6*) a->addr;
+			// Exclude link-local fe80::
+			if(inaddr->sin6_addr.s6_addr[0] == 0xfe &&
+				inaddr->sin6_addr.s6_addr[1] == 0x80)
+				continue;
+			*out_dev = strdup(d->name);
+			goto found;
+		}
+	}
+
+found:
+	pcap_freealldevs(alldevs);
+	return 0;
 }
 
 int rawsock_getgw(const char *dev, uint8_t *mac)

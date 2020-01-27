@@ -1,13 +1,8 @@
-#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-// pcap.h breaks if you don't define these:
-typedef unsigned char u_char;
-typedef unsigned short u_short;
-typedef unsigned int u_int;
 #include <pcap.h>
 #include <sys/socket.h>
 

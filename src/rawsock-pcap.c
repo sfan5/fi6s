@@ -1,10 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-// pcap.h breaks if you don't define these:
-typedef unsigned char u_char;
-typedef unsigned short u_short;
-typedef unsigned int u_int;
 #include <pcap.h>
 
 #include "rawsock.h"

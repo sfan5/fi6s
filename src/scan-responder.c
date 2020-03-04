@@ -187,6 +187,11 @@ static void *tcp_thread(void *unused)
 	(void) unused;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
+	const int packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE;
+	uint8_t _Alignas(uint32_t) packet[packet_sz];
+	// Copy the prepared structure from the "global" packet buffer
+	memcpy(packet, responder.buffer, packet_sz);
+
 	do {
 		usleep(BANNER_TIMEOUT * 1000 / 2);
 
@@ -209,12 +214,6 @@ static void *tcp_thread(void *unused)
 
 			// terminate connection if needed
 			if(!have_fin) {
-				const int packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE;
-				uint8_t _Alignas(uint32_t) packet[packet_sz];
-				// The "global" packet buffer is in use by another thread, so
-				// we can't write but still copy the prepared structure from there
-				memcpy(packet, responder.buffer, packet_sz);
-
 				uint32_t lseqnum = tcp_state_add_seqnum(&p, 0);
 
 				// send rst

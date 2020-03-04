@@ -383,6 +383,8 @@ static int dns_process(int off, uchar *banner, unsigned int *len)
 #undef ERR_IF
 
 /** IKEv2 **/
+// https://tools.ietf.org/html/rfc7296#section-3.1
+// https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml
 
 #define IKEV2_TEXT_BUFFER_SIZE 1024 // must be <= BANNER_MAX_LENGTH
 #define ERR_IF(expr) \
@@ -424,6 +426,8 @@ static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, 
 			ERR_IF(1 + 20 > len)
 			WRITEF("Certificate Request: X.509 ")
 			WRITEHEX(&buffer[1], 20)
+			if(len > 1 + 20)
+				WRITEF(" ...")
 			WRITEF("\n")
 			break;
 		}
@@ -449,6 +453,8 @@ static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, 
 				WRITEF("COOKIE %d octets", len - 4)
 			else if(message_type == 16404)
 				WRITEF("MULTIPLE_AUTH_SUPPORTED")
+			else if(message_type == 16418)
+				WRITEF("CHILDLESS_IKEV2_SUPPORTED")
 			else if(message_type == 16430)
 				WRITEF("IKEV2_FRAGMENTATION_SUPPORTED")
 			else

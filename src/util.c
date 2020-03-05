@@ -1,11 +1,12 @@
 #define _DEFAULT_SOURCE // htobe16
-#define _GNU_SOURCE // strchrnul
+#define _GNU_SOURCE // strchrnul, pthread_setname_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h> // isdigit()
 #include "os-endian.h"
 #include <assert.h>
+#include <pthread.h>
 
 #include "util.h"
 
@@ -108,7 +109,7 @@ int ports_iter_next(struct ports_iter *it)
 	return 1;
 }
 
-
+// Various utilities
 int strtol_suffix(const char *str)
 {
 	char *endptr;
@@ -124,7 +125,6 @@ int strtol_suffix(const char *str)
 	return value;
 }
 
-// Various utilities
 static void zc_find_range(const uint8_t *addr, int *first, int *last);
 
 void ipv6_string(char *dst, const uint8_t *addr)
@@ -303,6 +303,15 @@ void trim_string(char *buf, const char *trimchars)
 	while(ptr > buf && strchr(trimchars, *ptr))
 		ptr--;
 	*(ptr + 1) = '\0';
+}
+
+void set_thread_name(const char *name)
+{
+#ifdef __linux__
+	pthread_setname_np(pthread_self(), name);
+#else
+	(void) name;
+#endif
 }
 
 // UDP/TCP checksumming

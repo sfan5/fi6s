@@ -34,15 +34,13 @@ int strchr_count(const char *str, int c); // counts occurrences of c
 int realloc_if_needed(void **array, unsigned int elemsize,
 		unsigned int used, unsigned int *total); // reallocarray() wrapper for convenience
 void trim_string(char *buf, const char *trimchars); // trims any amount of specified chars from left and right
+void set_thread_name(const char *name); // sets name of calling thread
 
 #define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
 	do { \
 		strncpy(dst, src, n); \
 		dst[n] = '\0'; \
 	} while(0)
-
-#define my_strlcat(dst, src, size) /* see strlcat(3) from libbsd */ \
-	strncat(dst, src, (size) - strlen(dst) - 1)
 
 // UDP/TCP checksumming
 #define CHKSUM_INITIAL 0x0000

@@ -165,6 +165,7 @@ static void *send_thread(void *unused)
 
 	(void) unused;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	set_thread_name("send");
 
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
@@ -209,6 +210,7 @@ static void *send_thread_udp(void *unused)
 
 	(void) unused;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	set_thread_name("send");
 
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_UDP);
@@ -264,6 +266,7 @@ static void *send_thread_icmp(void *unused)
 
 	(void) unused;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	set_thread_name("send");
 
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_ICMPV6);
@@ -301,6 +304,7 @@ static void *recv_thread(void *unused)
 {
 	(void) unused;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	set_thread_name("recv");
 
 	if(rawsock_loop(recv_handler) < 0)
 		fprintf(stderr, "An error occurred in packet capture\n");

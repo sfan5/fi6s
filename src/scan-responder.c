@@ -10,6 +10,7 @@
 #include "tcp.h"
 #include "output.h"
 #include "banner.h"
+#include "util.h"
 
 static struct {
 	/* TODO: better sharing of these vars with scan.c */
@@ -186,6 +187,7 @@ static void *tcp_thread(void *unused)
 {
 	(void) unused;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	set_thread_name("tcp");
 
 	const int packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE;
 	uint8_t _Alignas(uint32_t) packet[packet_sz];

@@ -4,6 +4,7 @@
 #include "banner.h"
 #include "rawsock.h"
 #include "output.h"
+#include "util.h"
 
 static const char *typemap_low[1024] = {
 	[21] = "ftp",
@@ -29,6 +30,8 @@ const char *banner_service_type(uint8_t ip_type, int port)
 			return typemap_low[500];
 		case 5060:
 			return "sip";
+		case 5353:
+			return "mdns";
 		case 8080:
 			return typemap_low[80];
 		default:
@@ -193,6 +196,13 @@ static const char *get_query_udp(int port, unsigned int *len)
 		"Content-Length: 0\r\n"
 		"\r\n"
 	;
+	static const char mdns[] =
+		"\x12\x34" // Transaction ID
+		"\x01\x00" // QUERY opcode, RD=1
+		"\x00\x01\x00\x00\x00\x00\x00\x00" // 1 query
+		"\x09" "_services" "\x07" "_dns-sd" "\x04" "_udp" "\x05" "local" "\x00"
+		"\x00\x0c\x00\x01" // _services._dns-sd._udp.local.  IN  PTR
+	;
 
 
 	switch(port) {
@@ -208,6 +218,9 @@ static const char *get_query_udp(int port, unsigned int *len)
 		case 5060:
 			*len = sizeof(sip) - 1;
 			return sip;
+		case 5353:
+			*len = sizeof(mdns) - 1;
+			return mdns;
 		default:
 			return NULL;
 	}
@@ -220,6 +233,7 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len);
 
 // protocols:
 static int dns_process(int off, uchar *banner, unsigned int *len);
+static int mdns_process(uchar *banner, unsigned int *len);
 static int ikev2_process(int off, uchar *banner, unsigned int *len);
 static int snmp_process(uchar *banner, unsigned int *len);
 static int pptp_process(uchar *banner, unsigned int *len);
@@ -305,16 +319,25 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len)
 			break;
 		}
 
+		case 5353: {
+			int r = mdns_process(banner, len);
+			if(r == -1)
+				*len = 0;
+			break;
+		}
+
 		default:
 			break; // do nothing
 	}
 }
 
-/** DNS **/
+/** DNS and mDNS **/
+// https://tools.ietf.org/html/rfc1035
 
+#define MDNS_TEXT_BUFFER_SIZE 512 // must be <= BANNER_MAX_LENGTH
 #define ERR_IF(expr) \
 	if(expr) { return -1; }
-static int dns_skip_labels(int *_off, uchar *banner, unsigned int len)
+static int dns_skip_labels(int *_off, const uchar *banner, unsigned int len)
 {
 	int off = *_off;
 	while(off < len) {
@@ -324,7 +347,7 @@ static int dns_skip_labels(int *_off, uchar *banner, unsigned int len)
 			break;
 		} else if(c > 0) { /* ordinary label */
 			ERR_IF(c >= 64) // too long
-			off += 1 + banner[off];
+			off += 1 + c;
 		} else { /* terminating zero-length label */
 			off += 1;
 			break;
@@ -334,8 +357,31 @@ static int dns_skip_labels(int *_off, uchar *banner, unsigned int len)
 	return 0;
 }
 
-static int dns_process(int off, uchar *banner, unsigned int *len)
+static int dns_copy_labels(int off, const uchar *banner, unsigned int len, struct obuf *to)
 {
+	while(off < len) {
+		uchar c = banner[off];
+		if((c & 0xc0) == 0xc0) { /* message compression */
+			ERR_IF(off + 2 > len)
+			uint16_t loc = (c & 0x3f) << 8 | banner[off+1];
+			ERR_IF(loc >= off) // only jump backwards, this is what makes the recursion safe
+			off = loc;
+		} else if(c > 0) { /* ordinary label */
+			ERR_IF(c >= 64) // too long
+			ERR_IF(off + 1 + c > len)
+			obuf_write(to, &banner[off + 1], c);
+			obuf_writestr(to, ".");
+			off += 1 + c;
+		} else { /* terminating zero-length label */
+			break;
+		}
+	}
+	return 0;
+}
+
+static int dns_process_header(int *_off, uchar *banner, unsigned int *len)
+{
+	int off = *_off;
 	int r;
 
 	ERR_IF(off + 12 > *len)
@@ -351,18 +397,32 @@ static int dns_process(int off, uchar *banner, unsigned int *len)
 			msg = "-SERVFAIL-";
 		*len = strlen(msg);
 		memcpy(banner, msg, *len);
-		return 0;
+		return 1;
 	}
 
 	uint16_t qdcount = (banner[off+4] << 8) | banner[off+5];
 	uint16_t ancount = (banner[off+6] << 8) | banner[off+7];
 	ERR_IF(qdcount != 1 || ancount < 1)
 	off += 12;
+
 	// skip query
 	r = dns_skip_labels(&off, banner, *len);
 	ERR_IF(r == -1)
 	off += 4;
 	ERR_IF(off > *len)
+
+	*_off = off;
+	return 0;
+}
+
+static int dns_process(int off, uchar *banner, unsigned int *len)
+{
+	int r;
+
+	r = dns_process_header(&off, banner, len);
+	if(r == 1)
+		return 0;
+	ERR_IF(r == -1)
 
 	// parse answer record
 	r = dns_skip_labels(&off, banner, *len);
@@ -378,6 +438,41 @@ static int dns_process(int off, uchar *banner, unsigned int *len)
 	// return just the TXT record contents
 	memmove(banner, &banner[off+1], rr_rdlength - 1);
 	*len = rr_rdlength - 1;
+	return 0;
+}
+
+static int mdns_process(uchar *banner, unsigned int *len)
+{
+	int off = 0;
+	int r;
+	DECLARE_OBUF_STACK(extra, MDNS_TEXT_BUFFER_SIZE) // temporary buffer to hold our output
+
+	r = dns_process_header(&off, banner, len);
+	if(r == 1)
+		return 0;
+	ERR_IF(r == -1)
+
+	while(off < *len) {
+		// parse answer record
+		r = dns_skip_labels(&off, banner, *len);
+		ERR_IF(r == -1)
+		ERR_IF(off + 10 > *len)
+		uint16_t rr_type = (banner[off] << 8) | banner[off+1];
+		uint16_t rr_rdlength = (banner[off+8] << 8) | banner[off+9];
+		ERR_IF(rr_type != 0x000c /* PTR */)
+		ERR_IF(rr_rdlength < 1)
+		off += 10;
+
+		// copy the domain pointed by record
+		ERR_IF(off + rr_rdlength > *len)
+		int endoff = off + rr_rdlength;
+		r = dns_copy_labels(off, banner, endoff, &extra);
+		ERR_IF(r == -1)
+		obuf_writestr(&extra, "\n");
+		off = endoff;
+	}
+
+	obuf_copy(&extra, (char*) banner, len);
 	return 0;
 }
 #undef ERR_IF

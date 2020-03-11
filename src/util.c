@@ -359,3 +359,9 @@ void obuf_flush(struct obuf *b, FILE *f)
 	fwrite(b->buffer, b->offset, 1, f);
 	b->offset = 0;
 }
+
+void obuf_copy(const struct obuf *b, char *dest, unsigned int *len)
+{
+	memcpy(dest, b->buffer, b->offset);
+	*len = b->offset;
+}

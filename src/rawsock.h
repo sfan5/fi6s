@@ -70,6 +70,6 @@ void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, int *tt
 int rawsock_getdev(char **dev);
 int rawsock_getmac(const char *dev, uint8_t *mac); // MAC of the adapter/intf
 int rawsock_getgw(const char *dev, uint8_t *mac); // MAC of the default router/gateway
-int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip);
+int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip);
 
 #endif // _RAWSOCK_H

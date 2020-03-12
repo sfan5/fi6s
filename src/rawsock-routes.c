@@ -237,12 +237,20 @@ int rawsock_getmac(const char *dev, uint8_t *mac)
 #endif
 }
 
-int rawsock_getsrcip(const struct sockaddr_in6 *dest, uint8_t *ip)
+int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip)
 {
 	int sock;
 	sock = socket(AF_INET6, SOCK_DGRAM, 0);
 	if(sock == -1)
 		return -1;
+
+#ifdef __linux__
+	// Attempt to bind the socket to the interface we are actually going to use (may fail)
+	setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface) + 1);
+#else
+	(void) interface;
+#endif
+
 	if(connect(sock, (struct sockaddr*) dest, sizeof(struct sockaddr_in6)) == -1) {
 		if(errno == ENETUNREACH || errno == EAFNOSUPPORT)
 			fprintf(stderr, "Warning: Your machine does not seem to have any IPv6 connectivity\n");

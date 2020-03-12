@@ -261,7 +261,7 @@ int main(int argc, char *argv[])
 			struct sockaddr_in6 globaddr = {0};
 			globaddr.sin6_family = AF_INET6;
 			globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
-			rawsock_getsrcip(&globaddr, source_addr);
+			rawsock_getsrcip(&globaddr, interface, source_addr);
 		}
 	}
 

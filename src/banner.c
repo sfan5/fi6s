@@ -6,6 +6,31 @@
 #include "output.h"
 #include "util.h"
 
+struct m_entry {
+	const char *name;
+	uchar tcp:1, udp:1;
+	uint16_t port[4];
+};
+
+// Contains all service types with associated ports that have either
+// - a banner query or
+// - code to decode a response
+static const struct m_entry typelist[] = {
+	{ "ftp", 1, 0, { 21 } },
+	{ "ssh", 1, 0, { 22 } },
+	{ "telnet", 1, 0, { 23 } },
+	{ "domain", 1, 1, { 53 } },
+	{ "http", 1, 0, { 80, 8080 } },
+	{ "snmp", 0, 1, { 161 } },
+	{ "ike", 0, 1, { 500, 4500 } },
+	{ "pptp", 1, 0, { 1723 } },
+	{ "mysql", 1, 0, { 3306 } },
+	{ "sip", 0, 1, { 5060 } },
+	{ "mdns", 0, 1, { 5353 } },
+	{ NULL, }
+};
+
+// Same as above, but as a map and just the data we need in practice
 static const char *typemap_low[1024] = {
 	[21] = "ftp",
 	[22] = "ssh",
@@ -37,6 +62,39 @@ const char *banner_service_type(uint8_t ip_type, int port)
 		default:
 			return NULL;
 	}
+}
+
+void banner_print_service_types()
+{
+	printf("TCP ports:\n");
+	for(const struct m_entry *c = typelist; c->name != NULL; c++) {
+		if(!c->tcp)
+			continue;
+		printf("    %d", c->port[0]);
+		for(int i = 1; i < 4 && c->port[i] != 0; i++)
+			printf(",%d", c->port[i]);
+		printf(" %s\n", c->name);
+	}
+	printf("\n");
+
+	printf("UDP ports:\n");
+	for(const struct m_entry *c = typelist; c->name != NULL; c++) {
+		if(!c->udp)
+			continue;
+		printf("    %d", c->port[0]);
+		for(int i = 1; i < 4 && c->port[i] != 0; i++)
+			printf(",%d", c->port[i]);
+		unsigned int len = 0;
+		banner_get_query(IP_TYPE_UDP, c->port[0], &len);
+		printf(" %s (%d bytes payload)\n", c->name, len);
+	}
+	printf("\n");
+
+	printf("Collecting banners on TCP ports is possible regardless of whether the service is listed here.\n");
+	printf("However support may be required to get a response from the service"
+		" and/or decode it as human-readable output.\n");
+	printf("UDP services typically only answer to well-formed queries, so"
+		" scanning a port not listed here will be unsuccessful.\n");
 }
 
 uint8_t banner_outproto2ip_type(int output_proto)

@@ -8,6 +8,7 @@
 
 typedef unsigned char uchar;
 
+void banner_print_service_types();
 const char *banner_service_type(uint8_t ip_type, int port);
 const char *banner_get_query(uint8_t ip_type, int port, unsigned int *len);
 // The buffer passed into this must be writable and hold at least BANNER_MAX_LENGTH bytes

@@ -13,7 +13,9 @@
 #include "rawsock.h"
 #include "scan.h"
 #include "output.h"
+#include "banner.h"
 
+static int read_targets_from_file(const char *filename, int stream_targets);
 static void usage(void);
 static inline bool is_all_ff(const uint8_t *buf, int len);
 
@@ -24,10 +26,11 @@ enum operating_mode {
 
 int main(int argc, char *argv[])
 {
-	const struct option long_options[] = {
+	static const struct option long_options[] = {
 		{"readscan", required_argument, 0, 1000},
 		{"print-hosts", no_argument, 0, 1001},
 		{"print-summary", no_argument, 0, 1002},
+		{"list-protocols", no_argument, 0, 1003},
 
 		{"randomize-hosts", required_argument, 0, 2000},
 		{"max-rate", required_argument, 0, 2001},
@@ -99,6 +102,9 @@ int main(int argc, char *argv[])
 			case 1002:
 				mode = M_PRINT_SUMMARY;
 				break;
+			case 1003:
+				banner_print_service_types();
+				return 0;
 
 			case 2000:
 				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {
@@ -180,7 +186,7 @@ int main(int argc, char *argv[])
 
 			case 'h':
 				usage();
-				return 1;
+				return 0;
 			case 'p':
 				if(parse_ports(optarg, &ports) < 0) {
 					printf("Argument to -p must be valid port range(s)\n");
@@ -250,39 +256,8 @@ int main(int argc, char *argv[])
 	if(mode == M_READSCAN) {
 		// no targets in this mode
 	} else if(*tspec == '@') { // load from file
-		FILE *f;
-		char buf[256];
-		f = fopen(&tspec[1], "r");
-		if(!f) {
-			printf("Failed to open target list for reading.\n");
+		if(read_targets_from_file(&tspec[1], stream_targets) < 0)
 			return 1;
-		}
-
-		if(stream_targets) {
-			target_gen_set_streaming(f);
-			goto skip_parsing;
-		}
-
-		while(fgets(buf, sizeof(buf), f) != NULL) {
-			struct targetspec t;
-
-			trim_string(buf, " \t\r\n");
-			if(buf[0] == '#' || buf[0] == '\0')
-				continue; // skip comments and empty lines
-
-			if(target_parse(buf, &t) < 0) {
-				printf("Failed to parse target \"%s\".\n", buf);
-				fclose(f);
-				return 1;
-			}
-			if(target_gen_add(&t) < 0) {
-				fclose(f);
-				return 1;
-			}
-		}
-		fclose(f);
-
-skip_parsing: ;
 	} else { // single target spec
 		struct targetspec t;
 		if(target_parse(tspec, &t) < 0) {
@@ -354,6 +329,42 @@ skip_parsing: ;
 	return r;
 }
 
+static int read_targets_from_file(const char *filename, int stream_targets)
+{
+	FILE *f;
+	char buf[256];
+	f = fopen(filename, "r");
+	if(!f) {
+		printf("Failed to open target list for reading.\n");
+		return -1;
+	}
+
+	if(stream_targets) {
+		target_gen_set_streaming(f);
+		return 0;
+	}
+
+	while(fgets(buf, sizeof(buf), f) != NULL) {
+		struct targetspec t;
+
+		trim_string(buf, " \t\r\n");
+		if(buf[0] == '#' || buf[0] == '\0')
+			continue; // skip comments and empty lines
+
+		if(target_parse(buf, &t) < 0) {
+			printf("Failed to parse target \"%s\".\n", buf);
+			fclose(f);
+			return -1;
+		}
+		if(target_gen_add(&t) < 0) {
+			fclose(f);
+			return -1;
+		}
+	}
+	fclose(f);
+	return 0;
+}
+
 static void usage(void)
 {
 	printf("fi6s is a IPv6 network scanner capable of scanning lots of targets in little time.\n");
@@ -361,6 +372,7 @@ static void usage(void)
 	printf("\n");
 	printf("General options:\n");
 	printf("  --help                  Show this text\n");
+	printf("  --list-protocols        List TCP/UDP protocols supported by fi6s for banner grabbing\n");
 	printf("  --readscan <file>       Read specified binary scan from <file> instead of performing a scan\n");
 	printf("  --print-hosts           Print all hosts to be scanned and exit (don't scan)\n");
 	printf("  --print-summary         Print summary of hosts to be scanned and exit (don't scan)\n");

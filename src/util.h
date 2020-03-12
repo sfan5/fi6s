@@ -24,8 +24,10 @@ int ports_iter_next(struct ports_iter *it); // gets next port value, has to be c
 
 // Various utilities
 #define IPV6_STRING_MAX 40
+#define MAC_STRING_MAX 18
 
 void ipv6_string(char *dst, const uint8_t *addr); // writes null-terminated string representing the IPv6 address into buffer
+void mac_string(char *dst, const uint8_t *addr); // writes null-terminated string representing the MAC address into buffer
 int parse_mac(const char *str, uint8_t *dst); // parses MAC address string and writes raw bytes into buffer
 int parse_ipv6(const char *str, uint8_t *dst); // parses IPv6 address string and writes raw bytes into buffer
 int strtol_suffix(const char *str); // parses number and permits k suffix that multiplies by 1000

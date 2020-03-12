@@ -22,6 +22,7 @@ static inline bool is_all_ff(const uint8_t *buf, int len);
 enum operating_mode {
 	M_SCAN, M_PRINT_HOSTS,
 	M_READSCAN, M_PRINT_SUMMARY,
+	M_PRINT_NETWORK,
 };
 
 int main(int argc, char *argv[])
@@ -31,15 +32,17 @@ int main(int argc, char *argv[])
 		{"print-hosts", no_argument, 0, 1001},
 		{"print-summary", no_argument, 0, 1002},
 		{"list-protocols", no_argument, 0, 1003},
+		{"print-network-settings", no_argument, 0, 1004},
 
-		{"randomize-hosts", required_argument, 0, 2000},
-		{"max-rate", required_argument, 0, 2001},
 		{"interface", required_argument, 0, 2002},
 		{"source-mac", required_argument, 0, 2003},
 		{"router-mac", required_argument, 0, 2004},
 		{"source-ip", required_argument, 0, 2005},
-		{"source-port", required_argument, 0, 2006},
 		{"ttl", required_argument, 0, 2007},
+
+		{"randomize-hosts", required_argument, 0, 2000},
+		{"max-rate", required_argument, 0, 2001},
+		{"source-port", required_argument, 0, 2006},
 		{"stream-targets", no_argument, 0, 2008},
 		{"icmp", no_argument, 0, 2009},
 
@@ -105,23 +108,10 @@ int main(int argc, char *argv[])
 			case 1003:
 				banner_print_service_types();
 				return 0;
+			case 1004:
+				mode = M_PRINT_NETWORK;
+				break;
 
-			case 2000:
-				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {
-					printf("Argument to --randomize-hosts must be 0 or 1\n");
-					return 1;
-				}
-				randomize_hosts = (*optarg == '1');
-				break;
-			case 2001: {
-				int val = strtol_suffix(optarg);
-				if(val <= 0) {
-					printf("Argument to --max-rate must be a positive number\n");
-					return 1;
-				}
-				max_rate = val;
-				break;
-			}
 			case 2002:
 				interface = optarg;
 				break;
@@ -143,15 +133,6 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				break;
-			case 2006: {
-				int val = strtol_simple(optarg, 10);
-				if(val < 1 || val > 65535) {
-					printf("Argument to --source-port must be a number in range 1-65535\n");
-					return 1;
-				}
-				source_port = val;
-				break;
-			}
 			case 2007: {
 				int val = strtol_simple(optarg, 10);
 				if(val < 1 || val > 255) {
@@ -159,6 +140,32 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				ttl = val;
+				break;
+			}
+
+			case 2000:
+				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {
+					printf("Argument to --randomize-hosts must be 0 or 1\n");
+					return 1;
+				}
+				randomize_hosts = (*optarg == '1');
+				break;
+			case 2001: {
+				int val = strtol_suffix(optarg);
+				if(val <= 0) {
+					printf("Argument to --max-rate must be a positive number\n");
+					return 1;
+				}
+				max_rate = val;
+				break;
+			}
+			case 2006: {
+				int val = strtol_simple(optarg, 10);
+				if(val < 1 || val > 65535) {
+					printf("Argument to --source-port must be a number in range 1-65535\n");
+					return 1;
+				}
+				source_port = val;
 				break;
 			}
 			case 2008:
@@ -216,13 +223,25 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
-	if(mode != M_READSCAN && argc - optind != 1) {
-		printf("No target specification(s) given.\n");
+
+	int max_args = 1;
+	if(mode == M_READSCAN) {
+		max_args = 0;
+	} else {
+		if(mode == M_PRINT_NETWORK && argc - optind == 0) {
+			// permitted for convenience
+		} else if(argc - optind < 1) {
+			printf("No target specification(s) given.\n");
+			return 1;
+		}
+	}
+	if(argc - optind > max_args) {
+		printf("Too many arguments.\n");
 		return 1;
 	}
 
-	// attempt to auto-detect a few arguments
-	if(mode == M_SCAN) {
+	// attempt to auto-detect network settings
+	if(mode == M_SCAN || mode == M_PRINT_NETWORK) {
 		if(!interface) {
 			if(rawsock_getdev(&interface) < 0)
 				return 1;
@@ -231,7 +250,8 @@ int main(int argc, char *argv[])
 					"provide one using the --interface option.\n");
 				return 1;
 			}
-			fprintf(stderr, "Using default interface '%s'\n", interface);
+			if(mode != M_PRINT_NETWORK)
+				fprintf(stderr, "Using default interface '%s'\n", interface);
 		}
 		if(is_all_ff(source_mac, 6))
 			rawsock_getmac(interface, source_mac);
@@ -253,22 +273,24 @@ int main(int argc, char *argv[])
 	rawsock_ip_settings(source_addr, ttl);
 
 	const char *tspec = argv[optind];
-	if(mode == M_READSCAN) {
+	if(mode == M_READSCAN || mode == M_PRINT_NETWORK) {
 		// no targets in this mode
-	} else if(*tspec == '@') { // load from file
-		if(read_targets_from_file(&tspec[1], stream_targets) < 0)
-			return 1;
-	} else { // single target spec
-		struct targetspec t;
-		if(target_parse(tspec, &t) < 0) {
-			printf("Failed to parse target specification.\n");
+	} else {
+		if(*tspec == '@') { // load from file
+			if(read_targets_from_file(&tspec[1], stream_targets) < 0)
+				return 1;
+		} else { // single target spec
+			struct targetspec t;
+			if(target_parse(tspec, &t) < 0) {
+				printf("Failed to parse target specification.\n");
+				return 1;
+			}
+			target_gen_add(&t);
+		}
+		if(target_gen_finish_add() < 0) {
+			printf("No target specification(s) given.\n");
 			return 1;
 		}
-		target_gen_add(&t);
-	}
-	if(mode != M_READSCAN && target_gen_finish_add() < 0) {
-		printf("No target specification(s) given.\n");
-		return 1;
 	}
 
 	int r;
@@ -295,6 +317,18 @@ int main(int argc, char *argv[])
 			nports = 1;
 		}
 		target_gen_print_summary(max_rate, nports);
+
+		r = 0;
+	} else if(mode == M_PRINT_NETWORK) {
+		char buf[IPV6_STRING_MAX];
+		printf("Interface: %s\n", interface);
+		mac_string(buf, source_mac);
+		printf("Source MAC: %s\n", is_all_ff(source_mac, 6) ? "(missing)" : buf);
+		mac_string(buf, router_mac);
+		printf("Router MAC: %s\n", is_all_ff(router_mac, 6) ? "(missing)" : buf);
+		printf("Time-To-Live: %d\n", ttl);
+		ipv6_string(buf, source_addr);
+		printf("Source IP: %s\n", is_all_ff(source_addr, 16) ? "(missing)" : buf);
 
 		r = 0;
 	} else {
@@ -370,31 +404,42 @@ static void usage(void)
 	printf("fi6s is a IPv6 network scanner capable of scanning lots of targets in little time.\n");
 	printf("Usage: fi6s [options] <target specification>\n");
 	printf("\n");
-	printf("General options:\n");
-	printf("  --help                  Show this text\n");
-	printf("  --list-protocols        List TCP/UDP protocols supported by fi6s for banner grabbing\n");
-	printf("  --readscan <file>       Read specified binary scan from <file> instead of performing a scan\n");
-	printf("  --print-hosts           Print all hosts to be scanned and exit (don't scan)\n");
-	printf("  --print-summary         Print summary of hosts to be scanned and exit (don't scan)\n");
-	printf("Scan options:\n");
-	printf("  --stream-targets        Read target IPs from file on demand instead of ahead-of-time\n");
-	printf("  --randomize-hosts <0|1> Randomize scan order of hosts (default: 1)\n");
-	printf("  --max-rate <n>          Send no more than <n> packets per second (default: unlimited)\n");
-	printf("  --interface <iface>     Use <iface> for capturing and sending packets\n");
-	printf("  --source-mac <mac>      Set Ethernet layer source to <mac>\n");
-	printf("  --router-mac <mac>      Set Ethernet layer destination to <mac>\n");
-	printf("  --ttl <n>               Set Time-To-Live of sent packets to <n> (default: 64)\n");
-	printf("  --source-ip <ip>        Use specified source IP address\n");
-	printf("  --source-port <port>    Use specified source port\n");
-	printf("  -p/--ports <ranges>     Specify port range(s) to scan\n");
-	printf("  -b/--banners            Capture banners on open TCP ports / UDP responses\n");
-	printf("  -u/--udp                UDP scan\n");
-	printf("  --icmp                  ICMPv6 Echo scan\n");
-	printf("  -q/--quiet              Do not output status message during scan\n");
-	printf("Output options:\n");
-	printf("  -o <file>               Write results to <file>\n");
-	printf("  --output-format <fmt>   Set output format to one of list,json,binary (default: list)\n");
-	printf("  --show-closed           Show closed ports (TCP)\n");
+	static const struct { const char *l, *r; } lines[] = {
+		{"General options:", NULL},
+		{"--help", "Show this text"},
+		{"--list-protocols", "List TCP/UDP protocols supported by fi6s for banner grabbing"},
+		{"--readscan <file>", "Read specified binary scan from <file> instead of performing a scan"},
+		{"--print-network-settings", "Print (auto-detected) network settings and exit"},
+		{"--print-hosts", "Print all hosts to be scanned and exit (don't scan)"},
+		{"--print-summary", "Print summary of hosts to be scanned and exit"},
+		{"Network settings:", NULL},
+		{"--interface <iface>", "Use <iface> for capturing and sending packets"},
+		{"--source-mac <mac>", "Set Ethernet layer source to <mac>"},
+		{"--router-mac <mac>", "Set Ethernet layer destination to <mac>"},
+		{"--ttl <n>", "Set Time-To-Live of sent packets to <n> (default: 64)"},
+		{"--source-ip <ip>", "Use specified source IP address"},
+		{"Scan options:", NULL},
+		{"--stream-targets", "Read target IPs from file on demand instead of ahead-of-time"},
+		{"--randomize-hosts <0|1>", "Randomize scan order of hosts (default: 1)"},
+		{"--max-rate <n>", "Send no more than <n> packets per second (default: unlimited)"},
+		{"--source-port <port>", "Use specified source port"},
+		{"-p/--ports <ranges>", "Specify port range(s) to scan"},
+		{"-b/--banners", "Capture banners on open TCP ports / UDP responses"},
+		{"-u/--udp", "UDP scan"},
+		{"--icmp", "ICMPv6 Echo scan"},
+		{"-q/--quiet", "Do not output status message during scan"},
+		{"Output options:", NULL},
+		{"-o <file>", "Write results to <file>"},
+		{"--output-format <fmt>", "Set output format to one of list,json,binary (default: list)"},
+		{"--show-closed", "Show closed ports (TCP)"},
+		{NULL},
+	};
+	for(int i = 0; lines[i].l != NULL; i++) {
+		if(lines[i].r)
+			printf("  %-25s %s\n", lines[i].l, lines[i].r);
+		else
+			printf("%s\n", lines[i].l);
+	}
 	printf("\n");
 	printf("Target specification:\n");
 	printf("  A target specification is essentially just a network address and mask.\n");

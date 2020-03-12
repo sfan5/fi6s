@@ -178,6 +178,12 @@ static void zc_find_range(const uint8_t *addr, int *first, int *last)
 	}
 }
 
+void mac_string(char *dst, const uint8_t *addr)
+{
+	snprintf(dst, MAC_STRING_MAX, "%02X:%02X:%02X:%02X:%02X:%02X",
+		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
+
 int parse_mac(const char *str, uint8_t *dst)
 {
 	const char *p = str;

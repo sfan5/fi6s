@@ -24,8 +24,8 @@ struct outputdef {
 	int raw : 1;
 };
 
-const struct outputdef output_list;
-const struct outputdef output_json;
-const struct outputdef output_binary;
+extern const struct outputdef output_list;
+extern const struct outputdef output_json;
+extern const struct outputdef output_binary;
 
 #endif // _OUTPUT_H

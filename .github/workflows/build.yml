@@ -1,0 +1,53 @@
+name: build
+
+on:
+  push:
+    paths:
+      - 'src/**.[ch]'
+      - '**/Makefile'
+      - '.github/workflows/**.yml'
+  pull_request:
+    paths:
+      - 'src/**.[ch]'
+      - '**/Makefile'
+      - '.github/workflows/**.yml'
+
+jobs:
+  gcc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install gcc make git libpcap-dev
+
+      - name: Build
+        run: |
+          make -j2
+        env:
+          CC: gcc
+
+      - name: Test
+        run: |
+          sudo ./util/ci-test.sh
+
+
+  clang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install clang make git libpcap-dev
+
+      - name: Build
+        run: |
+          make -j2
+        env:
+          CC: clang
+
+      - name: Test
+        run: |
+          sudo ./util/ci-test.sh

@@ -9,7 +9,7 @@ static inline void skip_align(FILE *f, uint32_t read)
 	char junk[RECORD_ALIGN];
 	int have = read % RECORD_ALIGN;
 	if(have > 0)
-		fread(junk, RECORD_ALIGN - have, 1, f);
+		(void)fread(junk, RECORD_ALIGN - have, 1, f);
 }
 
 static uint32_t bswap(uint32_t n)
@@ -24,7 +24,7 @@ int binary_read_header(struct reader *r, FILE *f)
 {
 	struct file_header h;
 
-	fread(&h, sizeof(h), 1, f);
+	(void)fread(&h, sizeof(h), 1, f);
 	skip_align(f, sizeof(h));
 
 	if(h.magic != FILE_MAGIC) {
@@ -45,7 +45,7 @@ int binary_read_header(struct reader *r, FILE *f)
 
 int binary_read_record(struct reader *r, struct rec_header *h)
 {
-	fread(h, sizeof(*h), 1, r->file);
+	(void)fread(h, sizeof(*h), 1, r->file);
 	if(feof(r->file))
 		return -2;
 	skip_align(r->file, sizeof(*h));

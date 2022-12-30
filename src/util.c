@@ -324,10 +324,12 @@ void set_thread_name(const char *name)
 void chksum(uint32_t *tmp, const uint16_t *p, int n)
 {
 	assert(n % 2 == 0);
+	uint32_t sum = *tmp;
 	while(n > 0) {
-		*tmp += *p++;
+		sum += *p++;
 		n -= 2;
 	}
+	*tmp = sum;
 }
 
 uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)

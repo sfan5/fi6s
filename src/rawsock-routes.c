@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <errno.h>
 #include <pcap.h>
@@ -19,7 +20,7 @@
 #ifdef __linux__
 #define NL_READ_BUFFER_SIZE (64*1024*1024) // 64 KiB
 
-static int netlink_read(int sock, char *buf, int bufsz);
+static int netlink_read(int sock, unsigned int seq, char *buf, int bufsz);
 static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac);
 #endif
 
@@ -92,7 +93,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 		return -1;
 	}
 
-	int len = netlink_read(sock, buf, NL_READ_BUFFER_SIZE);
+	int len = netlink_read(sock, 0, buf, NL_READ_BUFFER_SIZE);
 	if(len == -1) {
 		close(sock);
 		free(buf);
@@ -120,7 +121,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 		if(strcmp(ifname, dev) != 0)
 			continue;
 
-		// Process each attribute
+		// Find the gateway
 		rta = (struct rtattr*) RTM_RTA(rtm);
 		rtlen = RTM_PAYLOAD(msg);
 		for(; RTA_OK(rta, rtlen); rta = RTA_NEXT(rta, rtlen)) {
@@ -174,14 +175,14 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 	msg->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	msg->nlmsg_type = RTM_GETNEIGH;
 	msg->nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST;
-	msg->nlmsg_seq = 0;
+	msg->nlmsg_seq = 10;
 	msg->nlmsg_pid = getpid();
 	if(send(sock, msg, msg->nlmsg_len, 0) == -1) {
 		perror("send");
 		return -1;
 	}
 
-	int len = netlink_read(sock, buf, NL_READ_BUFFER_SIZE);
+	int len = netlink_read(sock, 10, buf, NL_READ_BUFFER_SIZE);
 	if(len == -1)
 		return -1;
 	// Process each answer msg
@@ -193,24 +194,27 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 			ndm->ndm_state != NUD_DELAY && ndm->ndm_state != NUD_PERMANENT)
 			continue;
 
-		struct rtattr *rta = (struct rtattr*) RTM_RTA(ndm);
-		int rtlen = RTM_PAYLOAD(msg);
+		struct rtattr *rta;
+		int rtlen;
 
-		// Process each attribute
-		uint8_t temp_mac[6];
-		int success = 0;
+		// First check that this is the right addr
+		bool success = false;
+		rta = (struct rtattr*) RTM_RTA(ndm);
+		rtlen = RTM_PAYLOAD(msg);
 		for(; RTA_OK(rta, rtlen); rta = RTA_NEXT(rta, rtlen)) {
-			// check if we have the right addr
 			if(rta->rta_type == NDA_DST)
 				success = memcmp(ip, RTA_DATA(rta), 16) == 0;
+		}
+		if(!success)
+			continue;
 
+		// Find the MAC address
+		rta = (struct rtattr*) RTM_RTA(ndm);
+		rtlen = RTM_PAYLOAD(msg);
+		for(; RTA_OK(rta, rtlen); rta = RTA_NEXT(rta, rtlen)) {
 			if(rta->rta_type != NDA_LLADDR)
 				continue;
-			memcpy(temp_mac, RTA_DATA(rta), 6);
-		}
-
-		if(success) {
-			memcpy(mac, temp_mac, 6);
+			memcpy(mac, RTA_DATA(rta), 6);
 			return 0;
 		}
 	}
@@ -274,7 +278,7 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uin
 }
 
 #ifdef __linux__
-static int netlink_read(int sock, char *buf, int bufsz)
+static int netlink_read(int sock, unsigned int seq, char *buf, int bufsz)
 {
 	struct nlmsghdr *msg;
 	int have = 0;
@@ -295,7 +299,7 @@ static int netlink_read(int sock, char *buf, int bufsz)
 		if(!NLMSG_OK(msg, len))
 			return -1;
 
-		if(msg->nlmsg_seq != 0 || msg->nlmsg_pid != getpid())
+		if(msg->nlmsg_seq != seq || msg->nlmsg_pid != getpid())
 			continue; // not the one we want
 		if(msg->nlmsg_type == NLMSG_ERROR) {
 			struct nlmsgerr *err = (struct nlmsgerr*) NLMSG_DATA(msg);

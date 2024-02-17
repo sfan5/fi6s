@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <inttypes.h>
 
@@ -72,6 +73,8 @@ float target_gen_progress(void)
 	uint64_t total = 0, done = 0;
 	for(int i = 0; i < targets_i; i++)
 		progress_single(&targets[i], &total, &done);
+	if (total == 0)
+		return -1.0f;
 	done -= cache_size - cache_i;
 
 	return (done * 1000 / total) / 1000.0f;
@@ -157,12 +160,21 @@ void target_gen_print_summary(int max_rate, int nports)
 	}
 
 	uint64_t total = 0;
+	bool total_overflowed = false;
 	int largest = 128, smallest = 0;
 	for(int i = 0; i < targets_i; i++) {
 		const struct targetstate *t = &targets[i];
 
-		uint64_t junk = 0;
-		progress_single(t, &total, &junk);
+		uint64_t one = 0, tmp = 0;
+		progress_single(t, &one, &tmp);
+		if (one == 0) { // all bits shifted out of the value
+			total_overflowed = true;
+		} else {
+			tmp = total;
+			total += one;
+			if (total < tmp)
+				total_overflowed = true;
+		}
 
 		int maskbits = 0;
 		for(int j = 0; j < 4; j++)
@@ -173,12 +185,26 @@ void target_gen_print_summary(int max_rate, int nports)
 			smallest = maskbits;
 	}
 
-	printf("%d target(s) loaded, covering %" PRIu64 " addresses.\n", targets_i, total);
-	printf("Largest target equivalent to /%d subnet, smallest eq. /%d.\n", largest, smallest);
+	printf("%d target(s) loaded, covering ", targets_i);
+	if (total_overflowed)
+		printf("more than 2^64 addresses.\n");
+	else
+		printf("%" PRIu64 " addresses.\n", total);
+	if (targets_i == 1)
+		printf("Target is equivalent to a /%d subnet.\n", largest);
+	else
+		printf("Largest target is equivalent to /%d subnet, smallest /%d.\n", largest, smallest);
 
 	if(max_rate != -1) {
-		uint32_t dur = total / (unsigned int)max_rate;
+		if (total_overflowed)
+			goto over;
+		uint64_t dur64 = total / (uint64_t)max_rate;
+		if (dur64 > UINT32_MAX)
+			goto over;
+		uint32_t dur = dur64;
 		dur *= nports;
+		if ((uint64_t)dur < dur64)
+			goto over;
 
 		int n1, n2;
 		const char *f1, *f2;
@@ -196,11 +222,20 @@ void target_gen_print_summary(int max_rate, int nports)
 			f1 = "minutes", f2 = "seconds";
 		}
 
-		printf("At %d PPS and %d port(s), estimated scan duration is ", max_rate, nports);
-		if(n1 > 0 && n2 == 0)
-			printf("%d %s.\n", n1, f1);
-		else
-			printf("%d %s %d %s.\n", n1, f1, n2, f2);
+		if (0) {
+over:
+			printf("At %d PPS and %d port(s) the estimated scan duration is ", max_rate, nports);
+			// might be a lie if total_overflowed (max_rate can be very large), but this is insane anyway.
+			printf("more than 100 years.\n");
+		} else {
+			printf("At %d PPS and %d port(s) the estimated scan duration is ", max_rate, nports);
+			if(n1 == 0)
+				printf("%d %s.\n", n2, f2);
+			else if(n2 == 0)
+				printf("%d %s.\n", n1, f1);
+			else
+				printf("%d %s %d %s.\n", n1, f1, n2, f2);
+		}
 	}
 }
 

@@ -38,6 +38,8 @@ int rawsock_getdev(char **out_dev)
 	for(d = alldevs; d; d = d->next) {
 		if(d->flags & PCAP_IF_LOOPBACK)
 			continue;
+		if(!(d->flags & PCAP_IF_UP))
+			continue;
 		for(pcap_addr_t *a = d->addresses; a; a = a->next) {
 			if(((struct sockaddr*)a->addr)->sa_family != AF_INET6)
 				continue;
@@ -253,7 +255,8 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uin
 
 	if(connect(sock, (struct sockaddr*) dest, sizeof(struct sockaddr_in6)) == -1) {
 		if(errno == ENETUNREACH || errno == EAFNOSUPPORT)
-			fprintf(stderr, "Warning: Your machine does not seem to have any IPv6 connectivity\n");
+			fprintf(stderr, "Warning: Your machine does not seem to have "
+				"any IPv6 connectivity (no default route?)\n");
 		close(sock);
 		return -1;
 	}

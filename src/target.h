@@ -12,11 +12,13 @@ struct targetspec {
 int target_parse(const char *str, struct targetspec *dst);
 
 #define TARGET_RANDOMIZE_SIZE 8192
+#define TARGET_SANITY_MAX_BITS 48
 #define TARGET_EVEN_SPREAD 1 // not sure why you would disable this, but you can
 
 int target_gen_init(void);
 void target_gen_set_randomized(int v);
 void target_gen_set_streaming(FILE *f);
+int target_gen_sanity_check(void);
 void target_gen_fini(void);
 
 int target_gen_add(const struct targetspec *s);

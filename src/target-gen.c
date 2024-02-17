@@ -19,6 +19,7 @@ static uint64_t rand64();
 static int popcount(uint32_t x);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
+static void count_total(const struct targetstate *t, uint64_t *total, bool *overflowed);
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done);
 
 
@@ -165,16 +166,7 @@ void target_gen_print_summary(int max_rate, int nports)
 	for(int i = 0; i < targets_i; i++) {
 		const struct targetstate *t = &targets[i];
 
-		uint64_t one = 0, tmp = 0;
-		progress_single(t, &one, &tmp);
-		if (one == 0) { // all bits shifted out of the value
-			total_overflowed = true;
-		} else {
-			tmp = total;
-			total += one;
-			if (total < tmp)
-				total_overflowed = true;
-		}
+		count_total(t, &total, &total_overflowed);
 
 		int maskbits = 0;
 		for(int j = 0; j < 4; j++)
@@ -237,6 +229,40 @@ over:
 				printf("%d %s %d %s.\n", n1, f1, n2, f2);
 		}
 	}
+}
+
+int target_gen_sanity_check(void)
+{
+	uint64_t total = 0;
+	bool overflowed = false;
+	for(int i = 0; i < targets_i; i++) {
+		const struct targetstate *t = &targets[i];
+		count_total(t, &total, &overflowed);
+	}
+
+	const uint64_t limit = UINT64_C(1) << TARGET_SANITY_MAX_BITS;
+	if (overflowed || total >= limit) {
+		fprintf(stderr, "Error: You are trying to scan ");
+		if (overflowed)
+			fprintf(stderr, "more than 2^64");
+		else
+			fprintf(stderr, "%" PRIu64, total);
+		fprintf(stderr, " addresses. Refusing.\n"
+			"\n"
+			"Even under ideal conditions this would take a tremendous amount of "
+			"time (check with --print-summary).\nYou were probably expecting to "
+			"scan an IPv6 subnet exhaustively just like you can with IPv4.\n"
+			"In practice common sizes like /64 would take more than tens of "
+			"thousands YEARS to enumerate.\nYou will need to rethink your approach. "
+			"Good advice on IPv6 scanning can be found on the internet.\n"
+			"\n"
+			"In case you were hoping to scan stochastically, note that fi6s "
+			"IP randomization is not suited for this.\nAs an alternative you can "
+			"let an external program generate IPs and use --stream-targets.\n"
+		);
+		return -1;
+	}
+	return 0;
 }
 
 static void shuffle(void *_buf, int stride, int n)
@@ -352,6 +378,22 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 	// mark target as done if there's carry left over or the mask has all bits set
 	if(!any || carry == 1)
 		t->done = 1;
+}
+
+static void count_total(const struct targetstate *t, uint64_t *total, bool *overflowed)
+{
+	uint64_t one = 0, tmp = 0;
+	progress_single(t, &one, &tmp);
+	// if this target is larger than 2^64 all bits will be shifted off the end
+	if (one == 0) {
+		*overflowed = true;
+	} else {
+		// add with overflow check
+		tmp = *total;
+		*total += one;
+		if (*total < tmp)
+			*overflowed = true;
+	}
 }
 
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)

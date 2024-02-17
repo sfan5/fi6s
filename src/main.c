@@ -332,23 +332,28 @@ int main(int argc, char *argv[])
 
 		r = 0;
 	} else {
-		// complain about missing args
-		const char* missing = NULL;
-		if(is_all_ff(source_mac, 6))
-			missing = "--source-mac";
-		else if(is_all_ff(router_mac, 6))
-			missing = "--router-mac";
-		else if(is_all_ff(source_addr, 16))
-			missing = "--source-ip";
-		else if(ip_type != IP_TYPE_ICMPV6 && !validate_ports(&ports))
-			missing = "-p";
-		else if(banners && ip_type == IP_TYPE_TCP && source_port == -1)
-			missing = "--source-port";
+		r = target_gen_sanity_check() < 0 ? 1 : 0;
 
-		if(missing) {
-			printf("Option %s is required but was not given.\n", missing);
-			r = 1;
-		} else {
+		if (r == 0) {
+			const char* missing = NULL;
+			if(is_all_ff(source_mac, 6))
+				missing = "--source-mac";
+			else if(is_all_ff(router_mac, 6))
+				missing = "--router-mac";
+			else if(is_all_ff(source_addr, 16))
+				missing = "--source-ip";
+			else if(ip_type != IP_TYPE_ICMPV6 && !validate_ports(&ports))
+				missing = "-p";
+			else if(banners && ip_type == IP_TYPE_TCP && source_port == -1)
+				missing = "--source-port";
+
+			if(missing) {
+				printf("Option %s is required but was not given.\n", missing);
+				r = 1;
+			}
+		}
+
+		if (r == 0) {
 			scan_set_general(&ports, max_rate, show_closed, banners);
 			scan_set_network(source_addr, source_port, ip_type);
 			scan_set_output(outfile, outdef);

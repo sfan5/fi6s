@@ -1,13 +1,16 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 #include <pcap.h>
 
 #include "rawsock.h"
 #include "util.h"
 
 static pcap_t *handle;
+static pcap_dumper_t *dumper;
 static int linktype;
+static bool want_break;
 
 static void callback_fwd(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
@@ -15,7 +18,20 @@ int rawsock_open(const char *dev, int buffersize)
 {
 	char errbuf[PCAP_ERRBUF_SIZE];
 
-	handle = pcap_open_live(dev, buffersize, 0, 150, errbuf);
+	if(!strncmp(dev, "dump:", 5)) {
+		// we'll dump sent packets to a file and use a dead handle for capturing
+		handle = pcap_open_dead(DLT_EN10MB, buffersize);
+		if(!strcmp(dev + 5, "-"))
+			dumper = pcap_dump_fopen(handle, stdout);
+		else
+			dumper = pcap_dump_open(handle, dev + 5);
+		if(!dumper) {
+			fprintf(stderr, "Couldn't open pcap dumper: %s\n",
+				handle ? pcap_geterr(handle) : "?");
+		}
+	} else {
+		handle = pcap_open_live(dev, buffersize, 0, 150, errbuf);
+	}
 	if(!handle) {
 		fprintf(stderr, "Couldn't open pcap handle: %s\n", errbuf);
 		return -1;
@@ -29,7 +45,7 @@ int rawsock_open(const char *dev, int buffersize)
 
 	return 0;
 	err:
-	pcap_close(handle);
+	rawsock_close();
 	return -1;
 }
 
@@ -75,9 +91,14 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_
 		fprintf(stderr, "Failed to compile filter expression: %s\n", pcap_geterr(handle));
 		return -1;
 	}
-	if(pcap_setfilter(handle, &fp) == -1) {
-		fprintf(stderr, "Failed to install filter: %s\n", pcap_geterr(handle));
-		return -1;
+	// can't set filter on dead handle
+	if(!dumper) {
+		int r = pcap_setfilter(handle, &fp);
+		pcap_freecode(&fp);
+		if(r != 0) {
+			fprintf(stderr, "Failed to install filter: %s\n", pcap_geterr(handle));
+			return -1;
+		}
 	}
 
 	return 0;
@@ -101,14 +122,25 @@ int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt)
 
 int rawsock_loop(rawsock_callback func)
 {
+	want_break = false;
+
+	// pretend to loop if dead handle (dump mode)
+	if(dumper) {
+		do
+			usleep(150*1000);
+		while(!want_break);
+		return 0;
+	}
+
 	int r = pcap_loop(handle, -1, callback_fwd, (u_char*) func);
-	if(r == -2)
+	if(r == PCAP_ERROR_BREAK)
 		r = 0;
 	return r;
 }
 
 void rawsock_breakloop(void)
 {
+	want_break = true;
 	pcap_breakloop(handle);
 }
 
@@ -123,6 +155,14 @@ int rawsock_send(const uint8_t *pkt, int size)
 		size -= FRAME_ETH_SIZE;
 	}
 
+	if(dumper) {
+		struct pcap_pkthdr h = {0};
+		h.caplen = size;
+		h.len = size;
+		pcap_dump((u_char*) dumper, &h, pkt);
+		return 0;
+	}
+
 	int r = pcap_sendpacket(handle, pkt, size);
 #ifndef NDEBUG
 	if(r == -1)
@@ -133,7 +173,10 @@ int rawsock_send(const uint8_t *pkt, int size)
 
 void rawsock_close(void)
 {
-	pcap_close(handle);
+	if(dumper)
+		pcap_dump_close(dumper);
+	if(handle)
+		pcap_close(handle);
 }
 
 static void callback_fwd(u_char *user, const struct pcap_pkthdr *hdr, const u_char *pkt)

@@ -33,6 +33,11 @@ args2=(--icmp 100::x)
 regex='2001:db8::1 > 100::a: \[icmp6 sum ok\] ICMP6, echo request'
 dotest
 
+id="ICMP with TTL"
+args2=(--icmp 2001:db8::b00b --ttl 126)
+regex='IP6 \(hlim 126,.* ICMP6, echo request'
+dotest
+
 id="TCP"
 args2=(-b -p 1 100::x)
 regex='2001:db8::1\.64000 > 100::b\.1: Flags \[S\], cksum [^ ]+ \(correct\).*, length 0'
@@ -41,6 +46,11 @@ dotest
 id="UDP 53"
 args2=(-bu -p 53 100::x)
 regex='2001:db8::1\.64000 > 100::c\.53: \[udp sum ok\] [^ ]+ TXT [^ ]+ version\.bind\.'
+dotest
+
+id="UDP no banner"
+args2=(-u -p 404 100::x)
+regex='2001:db8::1\.64000 > 100::4\.404: \[udp sum ok\] UDP, length 0$'
 dotest
 
 ##

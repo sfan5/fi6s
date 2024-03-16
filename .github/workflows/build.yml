@@ -5,18 +5,20 @@ on:
     paths:
       - 'src/**.[ch]'
       - '**/Makefile'
+      - 'util/**.sh'
       - '.github/workflows/**.yml'
   pull_request:
     paths:
       - 'src/**.[ch]'
       - '**/Makefile'
+      - 'util/**.sh'
       - '.github/workflows/**.yml'
 
 jobs:
   gcc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install deps
         run: |
           sudo apt-get update
@@ -30,13 +32,17 @@ jobs:
 
       - name: Test
         run: |
-          sudo ./util/ci-test.sh
+          ./util/ci-test.sh
+
+      - name: Test 2
+        run: |
+          sudo ./util/ci-test2.sh
 
 
   clang:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install deps
         run: |
           sudo apt-get update
@@ -50,4 +56,8 @@ jobs:
 
       - name: Test
         run: |
-          sudo ./util/ci-test.sh
+          ./util/ci-test.sh
+
+      - name: Test 2
+        run: |
+          sudo ./util/ci-test2.sh

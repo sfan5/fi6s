@@ -1,5 +1,6 @@
 #define _DEFAULT_SOURCE // htobe16, htobe32
 #include <string.h>
+#include <assert.h>
 #include "os-endian.h"
 
 #include "icmp.h"
@@ -14,6 +15,9 @@ void icmp_checksum(const struct frame_ip *ipf, struct icmp_header *pkt, uint16_t
 		.ipproto = 0x3a, // IPPROTO_ICMPV6
 	};
 	uint32_t csum = CHKSUM_INITIAL;
+
+	static_assert(sizeof(ph) == PSEUDO_HEADER_SIZE, "incorrect PSEUDO_HEADER_SIZE");
+	static_assert(sizeof(*pkt) == ICMP_HEADER_SIZE, "incorrect ICMP_HEADER_SIZE");
 
 	chksum(&csum, (uint16_t*) ipf->src, 16); // ph->src
 	chksum(&csum, (uint16_t*) ipf->dest, 16); // ph->dest

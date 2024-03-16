@@ -286,7 +286,9 @@ int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, un
 {
 	if(used < *total)
 		return 0;
-	unsigned int new_total = *total ? *total * 2 : 64;
+	unsigned int new_total = *total * 3 / 2;
+	if (new_total < used)
+		new_total = used;
 	void *new_array = realloc(*array, new_total * elemsize);
 	if(new_array == NULL)
 		return -1;

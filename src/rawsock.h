@@ -4,28 +4,29 @@
 #include <stdint.h>
 #include <netinet/in.h>
 
-#define FRAME_ETH_SIZE 14
-#define FRAME_IP_SIZE 40
-
 #define ETH_TYPE_IPV6 0x86dd
 #define IP_TYPE_TCP 0x06
 #define IP_TYPE_UDP 0x11
 #define IP_TYPE_ICMPV6 0x3a
 
-#define RAWSOCK_FILTER_IPTYPE  (1 << 0)
-#define RAWSOCK_FILTER_DSTADDR (1 << 1)
-#define RAWSOCK_FILTER_DSTPORT (1 << 2)
+enum {
+	RAWSOCK_FILTER_IPTYPE  = (1 << 0),
+	RAWSOCK_FILTER_DSTADDR = (1 << 1),
+	RAWSOCK_FILTER_DSTPORT = (1 << 2),
+};
 
+#define FRAME_ETH_SIZE 14
 struct frame_eth {
 	uint8_t dest[6]; // Destination address
 	uint8_t src[6]; // Source address
 	uint16_t type; // Type of next header (usually IP)
 } __attribute__((packed));
 
+#define FRAME_IP_SIZE 40
 struct frame_ip {
 	uint8_t
 		traffic1:4, // Traffic class
-		ver:4; // Version (== 0x06)
+		ver:4; // Version (== 6)
 	uint8_t
 		flow1:4, // Flow label
 		traffic2:4;
@@ -47,7 +48,7 @@ struct pseudo_header {
 	uint8_t ipproto;
 } __attribute__((packed));
 
-typedef void (*rawsock_callback)(uint64_t,int,const uint8_t*);
+typedef void (*rawsock_callback)(uint64_t /* timestamp */, int /* length */, const uint8_t* /* packet */);
 
 int rawsock_open(const char *dev, int buffersize);
 int rawsock_has_ethernet_headers(void);

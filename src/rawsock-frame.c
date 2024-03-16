@@ -1,5 +1,6 @@
 #define _DEFAULT_SOURCE // htobe16
 #include <string.h>
+#include <assert.h>
 #include "os-endian.h"
 
 #include "rawsock.h"
@@ -17,6 +18,8 @@ void rawsock_eth_settings(const uint8_t *src, const uint8_t *dst)
 
 void rawsock_eth_prepare(struct frame_eth *f, int type)
 {
+	static_assert(sizeof(*f) == FRAME_ETH_SIZE, "incorrect FRAME_ETH_SIZE");
+
 	memcpy(f->dest, eth_dst, 6);
 	memcpy(f->src, eth_src, 6);
 	f->type = htobe16(type & 0xffff);
@@ -36,6 +39,8 @@ void rawsock_ip_settings(const uint8_t *src, int ttl)
 
 void rawsock_ip_prepare(struct frame_ip *f, int type)
 {
+	static_assert(sizeof(*f) == FRAME_IP_SIZE, "incorrect FRAME_IP_SIZE");
+
 	f->ver = 6;
 	f->traffic1 = 0;
 	f->traffic2 = 0;

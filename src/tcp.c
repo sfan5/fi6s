@@ -1,5 +1,6 @@
 #define _DEFAULT_SOURCE // htobe16, htobe32
 #include <string.h>
+#include <assert.h>
 #include "os-endian.h"
 
 #include "tcp.h"
@@ -56,6 +57,9 @@ void tcp_checksum(const struct frame_ip *ipf, struct tcp_header *pkt, uint16_t d
 		.ipproto = 0x06, // IPPROTO_TCP
 	};
 	uint32_t csum = CHKSUM_INITIAL;
+
+	static_assert(sizeof(ph) == PSEUDO_HEADER_SIZE, "incorrect PSEUDO_HEADER_SIZE");
+	static_assert(sizeof(*pkt) == TCP_HEADER_SIZE,  "incorrect TCP_HEADER_SIZE");
 
 	chksum(&csum, (uint16_t*) ipf->src, 16); // ph->src
 	chksum(&csum, (uint16_t*) ipf->dest, 16); // ph->dest

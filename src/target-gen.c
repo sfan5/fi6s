@@ -8,10 +8,10 @@
 #include "util.h"
 
 struct targetstate {
-	unsigned done : 1;
-	uint64_t delayed_start;
 	struct targetspec spec;
 	uint8_t cur[16];
+	uint64_t delayed_start;
+	unsigned done : 1;
 };
 
 static void shuffle(void *buf, int stride, int n);

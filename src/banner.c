@@ -8,25 +8,25 @@
 
 struct m_entry {
 	const char *name;
-	uchar tcp:1, udp:1;
 	uint16_t port[4];
+	unsigned tcp:1, udp:1;
 };
 
 // Contains all service types with associated ports that have either
 // - a banner query or
 // - code to decode a response
 static const struct m_entry typelist[] = {
-	{ "ftp", 1, 0, { 21 } },
-	{ "ssh", 1, 0, { 22 } },
-	{ "telnet", 1, 0, { 23 } },
-	{ "domain", 1, 1, { 53 } },
-	{ "http", 1, 0, { 80, 8080 } },
-	{ "snmp", 0, 1, { 161 } },
-	{ "ike", 0, 1, { 500, 4500 } },
-	{ "pptp", 1, 0, { 1723 } },
-	{ "mysql", 1, 0, { 3306 } },
-	{ "sip", 0, 1, { 5060 } },
-	{ "mdns", 0, 1, { 5353 } },
+	{ "ftp",      { 21 }, 1, 0 },
+	{ "ssh",      { 22 }, 1, 0 },
+	{ "telnet",   { 23 }, 1, 0 },
+	{ "domain",   { 53 }, 1, 1 },
+	{ "http",     { 80, 8080 }, 1, 0 },
+	{ "snmp",     { 161 }, 0, 1, },
+	{ "ike",      { 500, 4500 }, 0, 1, },
+	{ "pptp",     { 1723 }, 1, 0, },
+	{ "mysql",    { 3306 }, 1, 0, },
+	{ "sip",      { 5060 }, 0, 1, },
+	{ "mdns",     { 5353 }, 0, 1, },
 	{ NULL, }
 };
 

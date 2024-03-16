@@ -18,6 +18,11 @@
 #include "icmp.h"
 #include "banner.h"
 
+enum {
+	ERROR_SEND_THREAD = (1 << 0),
+	ERROR_RECV_THREAD = (1 << 1),
+};
+
 static uint8_t source_addr[16];
 static int source_port;
 //
@@ -30,10 +35,11 @@ static FILE *outfile;
 static struct outputdef outdef;
 
 static atomic_uint pkts_sent, pkts_recv;
+static atomic_uchar error_mask;
 static bool send_finished;
 
 static inline int source_port_rand(void);
-static void *send_thread(void *unused);
+static void *send_thread_tcp(void *unused);
 static void *send_thread_udp(void *unused);
 static void *send_thread_icmp(void *unused);
 
@@ -76,6 +82,7 @@ int scan_main(const char *interface, int quiet)
 		return -1;
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
+	atomic_store(&error_mask, 0);
 	send_finished = false;
 	if(banners && ip_type == IP_TYPE_TCP) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
@@ -106,7 +113,7 @@ int scan_main(const char *interface, int quiet)
 	do {
 		int r;
 		if(ip_type == IP_TYPE_TCP)
-			r = pthread_create(&ts, NULL, send_thread, NULL);
+			r = pthread_create(&ts, NULL, send_thread_tcp, NULL);
 		else if(ip_type == IP_TYPE_UDP)
 			r = pthread_create(&ts, NULL, send_thread_udp, NULL);
 		else // IP_TYPE_ICMPV6
@@ -117,6 +124,7 @@ int scan_main(const char *interface, int quiet)
 	pthread_detach(ts);
 
 	// Stats & progress watching
+	unsigned char cur_error = 0;
 	while(1) {
 		unsigned int cur_sent, cur_recv;
 		cur_sent = atomic_exchange(&pkts_sent, 0);
@@ -130,17 +138,26 @@ int scan_main(const char *interface, int quiet)
 		}
 		if(send_finished)
 			break;
+		cur_error = atomic_load(&error_mask);
+		if(cur_error)
+			break;
 
 		usleep(STATS_INTERVAL * 1000);
 	}
 
 	// Wait for the last packets to arrive
-	fprintf(stderr, "\nWaiting %d more seconds...\n", FINISH_WAIT_TIME);
-	usleep(FINISH_WAIT_TIME * 1000 * 1000);
+	fputs("", stderr);
+	if(!cur_error) {
+		fprintf(stderr, "Waiting %d more seconds...\n", FINISH_WAIT_TIME);
+		usleep(FINISH_WAIT_TIME * 1000 * 1000);
+	} else {
+		fprintf(stderr, "Errors were encountered.\n");
+		// FIXME: missing a way to abort the scan thread
+	}
 	rawsock_breakloop();
 	if(banners && ip_type == IP_TYPE_TCP)
 		scan_responder_finish();
-	if(!quiet)
+	if(!quiet && !cur_error)
 		fprintf(stderr, "rcv:%5u\n", atomic_exchange(&pkts_recv, 0));
 
 	// Write output file footer
@@ -157,7 +174,7 @@ int scan_main(const char *interface, int quiet)
 
 /****/
 
-static void *send_thread(void *unused)
+static void *send_thread_tcp(void *unused)
 {
 	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
 	uint8_t dstaddr[16];
@@ -170,7 +187,7 @@ static void *send_thread(void *unused)
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_TCP);
 	if(target_gen_next(dstaddr) < 0)
-		return NULL;
+		goto err;
 	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
 	tcp_prepare(TCP_HEADER(packet));
 	tcp_make_syn(TCP_HEADER(packet), FIRST_SEQNUM);
@@ -200,6 +217,9 @@ static void *send_thread(void *unused)
 
 	send_finished = true;
 	return NULL;
+err:
+	atomic_fetch_or(&error_mask, ERROR_SEND_THREAD);
+	return NULL;
 }
 
 static void *send_thread_udp(void *unused)
@@ -215,7 +235,7 @@ static void *send_thread_udp(void *unused)
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_UDP);
 	if(target_gen_next(dstaddr) < 0)
-		return NULL;
+		goto err;
 	if(!banners) {
 		rawsock_ip_modify(IP_FRAME(packet), UDP_HEADER_SIZE, dstaddr);
 		udp_modify2(UDP_HEADER(packet), 0); // we send empty packets
@@ -257,6 +277,9 @@ static void *send_thread_udp(void *unused)
 
 	send_finished = true;
 	return NULL;
+err:
+	atomic_fetch_or(&error_mask, ERROR_SEND_THREAD);
+	return NULL;
 }
 
 static void *send_thread_icmp(void *unused)
@@ -271,7 +294,7 @@ static void *send_thread_icmp(void *unused)
 	rawsock_eth_prepare(ETH_FRAME(packet), ETH_TYPE_IPV6);
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_ICMPV6);
 	if(target_gen_next(dstaddr) < 0)
-		return NULL;
+		goto err;
 	rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	ICMP_HEADER(packet)->type = 128; // Echo Request
 	ICMP_HEADER(packet)->code = 0;
@@ -296,6 +319,9 @@ static void *send_thread_icmp(void *unused)
 
 	send_finished = true;
 	return NULL;
+err:
+	atomic_fetch_or(&error_mask, ERROR_SEND_THREAD);
+	return NULL;
 }
 
 /****/
@@ -306,8 +332,9 @@ static void *recv_thread(void *unused)
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	set_thread_name("recv");
 
-	if(rawsock_loop(recv_handler) < 0)
-		fprintf(stderr, "An error occurred in packet capture\n");
+	int r = rawsock_loop(recv_handler);
+	if(r < 0)
+		atomic_fetch_or(&error_mask, ERROR_RECV_THREAD);
 	return NULL;
 }
 

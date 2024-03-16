@@ -135,6 +135,8 @@ int rawsock_loop(rawsock_callback func)
 	int r = pcap_loop(handle, -1, callback_fwd, (u_char*) func);
 	if(r == PCAP_ERROR_BREAK)
 		r = 0;
+	if(r != 0)
+		pcap_perror(handle, "pcap_loop");
 	return r;
 }
 

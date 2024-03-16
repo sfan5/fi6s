@@ -8,7 +8,7 @@
 #include "util.h"
 
 struct targetstate {
-	int done:1;
+	unsigned done : 1;
 	uint64_t delayed_start;
 	struct targetspec spec;
 	uint8_t cur[16];

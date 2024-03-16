@@ -25,7 +25,7 @@ struct tcp_state {
 
 	// local state
 	uint32_t next_lseqnum; // seqnum of next packet we would be sending
-	int have_fin : 1;
+	unsigned have_fin : 1;
 
 	// remote sequence numbers
 	uint32_t first_rseqnum; // == <seqnum of syn-ack> + 1

@@ -143,7 +143,11 @@ int rawsock_loop(rawsock_callback func)
 void rawsock_breakloop(void)
 {
 	want_break = true;
-	pcap_breakloop(handle);
+	// calling pcap_breakloop on a dead handle should be a a no-op, but
+	// actually segfaults on libpcap 1.10.1 or older.
+	if(!dumper) {
+		pcap_breakloop(handle);
+	}
 }
 
 int rawsock_send(const uint8_t *pkt, int size)

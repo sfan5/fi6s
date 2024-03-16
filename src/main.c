@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
 				break;
 
 			case 2002:
-				interface = optarg;
+				interface = strdup(optarg);
 				break;
 			case 2003:
 				if(parse_mac(optarg, source_mac) < 0) {
@@ -361,6 +361,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if (interface)
+		free(interface);
 	target_gen_fini();
 	fclose(outfile);
 	if(mode == M_READSCAN)

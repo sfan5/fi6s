@@ -325,6 +325,7 @@ void set_thread_name(const char *name)
 // UDP/TCP checksumming
 void chksum(uint32_t *tmp, const uint16_t *p, int n)
 {
+	assert(((intptr_t) p) % sizeof(uint16_t) == 0); // align
 	assert(n % 2 == 0);
 	uint32_t sum = *tmp;
 	while(n > 0) {
@@ -336,6 +337,7 @@ void chksum(uint32_t *tmp, const uint16_t *p, int n)
 
 uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)
 {
+	assert(((intptr_t) p) % sizeof(uint16_t) == 0);
 	while(n > 1) {
 		sum += *p++;
 		n -= 2;

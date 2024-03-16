@@ -169,8 +169,11 @@ void target_gen_print_summary(int max_rate, int nports)
 		count_total(t, &total, &total_overflowed);
 
 		int maskbits = 0;
-		for(int j = 0; j < 4; j++)
-			maskbits += popcount(((uint32_t*) t->spec.mask)[j]);
+		for(int j = 0; j < 4; j++) {
+			uint32_t v;
+			memcpy(&v, &t->spec.mask[4*j], 4);
+			maskbits += popcount(v);
+		}
 		if(maskbits < largest)
 			largest = maskbits;
 		if(maskbits > smallest)

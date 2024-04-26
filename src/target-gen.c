@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include "target.h"
 #include "util.h"
@@ -128,6 +129,7 @@ int target_gen_finish_add(void)
 		progress_single(&targets[i], &tmp, &junk);
 		if(tmp == max)
 			continue;
+		assert(max > tmp);
 		// set begin randomly between the first and last possible starting point
 		targets[i].delayed_start = rand64() % (max - tmp + 1);
 	}
@@ -193,13 +195,15 @@ void target_gen_print_summary(int max_rate, int nports)
 	if(max_rate != -1) {
 		if (total_overflowed)
 			goto over;
-		uint64_t dur64 = total / (uint64_t)max_rate;
+		assert(nports >= 1);
+		uint64_t dur64 = total * (uint64_t)nports;
+		if (dur64 < total)
+			goto over;
+		assert(max_rate >= 1);
+		dur64 /= (uint64_t)max_rate;
 		if (dur64 > UINT32_MAX)
 			goto over;
-		uint32_t dur = dur64;
-		dur *= nports;
-		if ((uint64_t)dur < dur64)
-			goto over;
+		const uint32_t dur = dur64;
 
 		int n1, n2;
 		const char *f1, *f2;

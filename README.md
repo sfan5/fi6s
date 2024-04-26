@@ -24,17 +24,17 @@ UNIX-like platforms, but don't expect it to run on Windows.
 Usage is pretty easy, fi6s will try to auto-detect the dirty technical details
 such as source, router MAC addresses and source IP.
 
-	# ./fi6s -p 80,8000-8100 2001:db8::/120
+	# ./fi6s -p 80,8000-8100 --max-rate 170 2001:db8::/120
 
 This example will:
 * scan the 2001:db8::/120 subnet (256 addresses in total)
 * scan TCP ports 80 and 8000 to 8100 (102 ports in total)
-* send as many packets per second as possible
+* send at most 170 packets per second
 * output scan results to standard output in the "`list`" format
 
 There are more different ways of specifying an address range to scan,
-if you aren't sure what's about to happen invoke fi6s with `--print-hosts`
-to print all IPs or `--print-summary` to get a quick overview about the scan.
+if you aren't sure what's about to happen run fi6s with `--print-summary` to get
+a quick overview about the scan or `--print-hosts` to print all potential IPs.
 
 For more advanced features please consult the output of `fi6s --help`.
 

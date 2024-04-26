@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include <pcap.h>
 
 #include "rawsock.h"
@@ -10,7 +11,7 @@
 static pcap_t *handle;
 static pcap_dumper_t *dumper;
 static int linktype;
-static bool want_break;
+static atomic_bool want_break;
 
 static void callback_fwd(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
@@ -124,13 +125,13 @@ int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt)
 
 int rawsock_loop(rawsock_callback func)
 {
-	want_break = false;
+	atomic_store(&want_break, false);
 
 	// pretend to loop if dead handle (dump mode)
 	if(dumper) {
 		do
 			usleep(150*1000);
-		while(!want_break);
+		while(!atomic_load(&want_break));
 		return 0;
 	}
 
@@ -144,7 +145,7 @@ int rawsock_loop(rawsock_callback func)
 
 void rawsock_breakloop(void)
 {
-	want_break = true;
+	atomic_store(&want_break, true);
 	// calling pcap_breakloop on a dead handle should be a a no-op, but
 	// actually segfaults on libpcap 1.10.1 or older.
 	if(!dumper) {

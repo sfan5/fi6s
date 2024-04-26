@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h> // usleep()
+#include <stdatomic.h>
 #include <pthread.h>
 
 #include "scan.h"
@@ -21,7 +22,7 @@ static struct {
 	uint8_t _Alignas(uint32_t) buffer[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
 
 	pthread_t tcp_thread;
-	bool tcp_thread_exit;
+	atomic_bool tcp_thread_exit;
 } responder;
 
 static void *tcp_thread(void *unused);
@@ -38,7 +39,7 @@ int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t 
 	responder.outdef = outdef;
 	responder.source_port = source_port;
 
-	responder.tcp_thread_exit = 0;
+	atomic_store(&responder.tcp_thread_exit, false);
 	if(pthread_create(&responder.tcp_thread, NULL, tcp_thread, NULL) < 0)
 		return -1;
 
@@ -231,12 +232,12 @@ static void *tcp_thread(void *unused)
 			// destroy tcp session
 			tcp_state_delete(&p);
 		}
-	} while(!responder.tcp_thread_exit);
+	} while(!atomic_load(&responder.tcp_thread_exit));
 	return NULL;
 }
 
 void scan_responder_finish()
 {
-	responder.tcp_thread_exit = 1;
+	atomic_store(&responder.tcp_thread_exit, true);
 	pthread_join(responder.tcp_thread, NULL);
 }

@@ -19,8 +19,9 @@
 #include "banner.h"
 
 enum {
-	ERROR_SEND_THREAD = (1 << 0),
-	ERROR_RECV_THREAD = (1 << 1),
+	SEND_FINISHED 	  = (1 << 0),
+	ERROR_SEND_THREAD = (1 << 1),
+	ERROR_RECV_THREAD = (1 << 2),
 };
 
 static uint8_t source_addr[16];
@@ -35,8 +36,7 @@ static FILE *outfile;
 static struct outputdef outdef;
 
 static atomic_uint pkts_sent, pkts_recv;
-static atomic_uchar error_mask;
-static bool send_finished;
+static atomic_uchar status_bits;
 
 static inline int source_port_rand(void);
 static void *send_thread_tcp(void *unused);
@@ -82,8 +82,7 @@ int scan_main(const char *interface, int quiet)
 		return -1;
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
-	atomic_store(&error_mask, 0);
-	send_finished = false;
+	atomic_store(&status_bits, 0);
 	if(banners && ip_type == IP_TYPE_TCP) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
 			goto err;
@@ -124,7 +123,7 @@ int scan_main(const char *interface, int quiet)
 	pthread_detach(ts);
 
 	// Stats & progress watching
-	unsigned char cur_error = 0;
+	unsigned char cur_status = 0;
 	while(1) {
 		unsigned int cur_sent, cur_recv;
 		cur_sent = atomic_exchange(&pkts_sent, 0);
@@ -136,18 +135,17 @@ int scan_main(const char *interface, int quiet)
 			else
 				fprintf(stderr, "snt:%5u rcv:%5u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
 		}
-		if(send_finished)
-			break;
-		cur_error = atomic_load(&error_mask);
-		if(cur_error)
+		cur_status = atomic_load(&status_bits);
+		if(cur_status)
 			break;
 
 		usleep(STATS_INTERVAL * 1000);
 	}
+	cur_status &= ~SEND_FINISHED; // leave only error bits
 
 	// Wait for the last packets to arrive
 	fputs("", stderr);
-	if(!cur_error) {
+	if(!cur_status) {
 		fprintf(stderr, "Waiting %d more seconds...\n", FINISH_WAIT_TIME);
 		usleep(FINISH_WAIT_TIME * 1000 * 1000);
 	} else {
@@ -157,7 +155,7 @@ int scan_main(const char *interface, int quiet)
 	rawsock_breakloop();
 	if(banners && ip_type == IP_TYPE_TCP)
 		scan_responder_finish();
-	if(!quiet && !cur_error)
+	if(!quiet && !cur_status)
 		fprintf(stderr, "rcv:%5u\n", atomic_exchange(&pkts_recv, 0));
 
 	// Write output file footer
@@ -215,10 +213,10 @@ static void *send_thread_tcp(void *unused)
 		}
 	}
 
-	send_finished = true;
+	atomic_fetch_or(&status_bits, SEND_FINISHED);
 	return NULL;
 err:
-	atomic_fetch_or(&error_mask, ERROR_SEND_THREAD);
+	atomic_fetch_or(&status_bits, ERROR_SEND_THREAD);
 	return NULL;
 }
 
@@ -275,10 +273,10 @@ static void *send_thread_udp(void *unused)
 		}
 	}
 
-	send_finished = true;
+	atomic_fetch_or(&status_bits, SEND_FINISHED);
 	return NULL;
 err:
-	atomic_fetch_or(&error_mask, ERROR_SEND_THREAD);
+	atomic_fetch_or(&status_bits, ERROR_SEND_THREAD);
 	return NULL;
 }
 
@@ -317,10 +315,10 @@ static void *send_thread_icmp(void *unused)
 		rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	}
 
-	send_finished = true;
+	atomic_fetch_or(&status_bits, SEND_FINISHED);
 	return NULL;
 err:
-	atomic_fetch_or(&error_mask, ERROR_SEND_THREAD);
+	atomic_fetch_or(&status_bits, ERROR_SEND_THREAD);
 	return NULL;
 }
 
@@ -334,7 +332,7 @@ static void *recv_thread(void *unused)
 
 	int r = rawsock_loop(recv_handler);
 	if(r < 0)
-		atomic_fetch_or(&error_mask, ERROR_RECV_THREAD);
+		atomic_fetch_or(&status_bits, ERROR_RECV_THREAD);
 	return NULL;
 }
 

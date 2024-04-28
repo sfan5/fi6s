@@ -357,22 +357,24 @@ int main(int argc, char *argv[])
 		if (r == 0) {
 			const bool mandatory = banners && ip_type == IP_TYPE_TCP;
 			const bool useful = mandatory || (banners && ip_type == IP_TYPE_UDP);
+			bool auto_failed = false;
 
 			if (mandatory || useful) {
 				int tmp = rawsock_reserve_port(source_addr, ip_type, source_port == -1 ? 0 : source_port);
-				if (mandatory && tmp == -2) {
-					log_raw("A source port is required but was not given.");
-				} else if (mandatory && tmp == -1) {
-					log_raw("A source port is required but was not given (automatic reservation failed).");
-				} else if (tmp >= 0) {
+				if (tmp >= 0) {
 					log_debug("reserved source port: %d", tmp);
 					source_port = tmp;
+				} else {
+					auto_failed = tmp == -1;
 				}
 			}
 
 			assert(source_port != 0);
-			if (mandatory && source_port == -1)
+			if (mandatory && source_port == -1) {
+				log_raw("A source port is required but was not given%s.",
+					auto_failed ? " (automatic reservation failed)" : "");
 				r = 1;
+			}
 		}
 
 		if (r == 0) {

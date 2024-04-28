@@ -2,10 +2,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
-#include <unistd.h> // usleep()
 #include <stdatomic.h>
 #include <pthread.h>
 #include <netinet/tcp.h>
+#include <unistd.h>
+#include <sys/epoll.h>
 
 #include "scan.h"
 #include "rawsock.h"
@@ -25,9 +26,10 @@ static struct {
 	FILE *outfile;
 	const struct outputdef *outdef;
 	uint16_t source_port;
+	int epoll_fd;
 
-	//pthread_t tcp_thread;
-	//atomic_bool tcp_thread_exit;
+	pthread_t tcp_thread;
+	atomic_bool tcp_thread_exit;
 } responder;
 
 static void *tcp_thread(void *unused);
@@ -38,9 +40,13 @@ int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t 
 	responder.outdef = outdef;
 	responder.source_port = source_port;
 
-	//atomic_store(&responder.tcp_thread_exit, false);
-	//if(pthread_create(&responder.tcp_thread, NULL, tcp_thread, NULL) < 0)
-	//	return -1;
+	responder.epoll_fd = epoll_create(1);
+	if(responder.epoll_fd == -1)
+		return -1;
+
+	atomic_store(&responder.tcp_thread_exit, false);
+	if(pthread_create(&responder.tcp_thread, NULL, tcp_thread, NULL) < 0)
+		return -1;
 
 	return 0;
 }
@@ -136,12 +142,25 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 	tcp_debug("repaired into fd=%d\n", sock);
 
-	//unsigned int plen;
-	//const char *payload = banner_get_query(IP_TYPE_TCP, rport, &plen);
+	unsigned int plen;
+	const char *payload = banner_get_query(IP_TYPE_TCP, rport, &plen);
+	if(!payload) {
+		close(sock);
+		return;
+	}
 
+	send(sock, payload, plen, 0);
+
+	struct epoll_event ev = {
+		.events = EPOLLIN,
+		.data.fd = sock,
+	};
+	if(epoll_ctl(responder.epoll_fd, EPOLL_CTL_ADD, sock, &ev) == -1) {
+		perror("epoll_ctl");
+		close(sock);
+	}
 }
 
-#if 0
 static void *tcp_thread(void *unused)
 {
 	(void) unused;
@@ -149,14 +168,25 @@ static void *tcp_thread(void *unused)
 	set_thread_name("tcp");
 
 	do {
+		struct epoll_event ev;
+		int r = epoll_wait(responder.epoll_fd, &ev, 1, 1000);
+		if(r <= 0)
+			continue;
+
+		if(ev.events & EPOLLIN) {
+			char buf[123];
+			int r = recv(ev.data.fd, buf, sizeof(buf), 0);
+			if(r > 0) {
+				fwrite(buf, r, 1, stdout);
+			}
+		}
 
 	} while(!atomic_load(&responder.tcp_thread_exit));
 	return NULL;
 }
-#endif
 
 void scan_responder_finish()
 {
-	//atomic_store(&responder.tcp_thread_exit, true);
-	//pthread_join(responder.tcp_thread, NULL);
+	atomic_store(&responder.tcp_thread_exit, true);
+	pthread_join(responder.tcp_thread, NULL);
 }

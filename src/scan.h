@@ -12,7 +12,6 @@ struct ports;
 #define BANNER_TIMEOUT   2500 // ms
 
 #define FIRST_SEQNUM 0xf0000000
-#define ICMP_BODY 0xfaff0132
 
 void scan_set_general(const struct ports *ports, int max_rate, int show_closed, int banners);
 void scan_set_network(const uint8_t *source_addr, int source_port, uint8_t ip_type);

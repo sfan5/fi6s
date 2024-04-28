@@ -35,6 +35,7 @@ static uint8_t ip_type;
 static FILE *outfile;
 static struct outputdef outdef;
 
+static uint32_t scan_randomness;
 static atomic_uint pkts_sent, pkts_recv;
 static atomic_uchar status_bits;
 
@@ -80,6 +81,7 @@ int scan_main(const char *interface, int quiet)
 {
 	if(rawsock_open(interface, 65535) < 0)
 		return -1;
+	scan_randomness = rand64();
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	atomic_store(&status_bits, 0);
@@ -294,7 +296,7 @@ static void *send_thread_icmp(void *unused)
 	rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	ICMP_HEADER(packet)->type = 128; // Echo Request
 	ICMP_HEADER(packet)->code = 0;
-	ICMP_HEADER(packet)->body32 = ICMP_BODY;
+	ICMP_HEADER(packet)->body32 = scan_randomness;
 
 	while(1) {
 		icmp_checksum(IP_FRAME(packet), ICMP_HEADER(packet), 0);
@@ -432,12 +434,15 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 
 static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
-	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE)
+	const int minlen = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE;
+	if(len < minlen)
 		goto perr;
+	else if(len != minlen)
+		return;
 
 	if(ICMP_HEADER(packet)->type != 129) // Echo Reply
 		return;
-	if(ICMP_HEADER(packet)->body32 != ICMP_BODY)
+	if(ICMP_HEADER(packet)->body32 != scan_randomness)
 		return;
 
 	int v2;

@@ -322,6 +322,26 @@ void set_thread_name(const char *name)
 #endif
 }
 
+uint64_t rand64(void)
+{
+	uint64_t ret = 0;
+#if RAND_MAX >= INT32_MAX
+	// only 62 bits of randomness, but this is good enough
+	ret ^= ((uint64_t) rand()) << 31;
+	ret ^= (uint64_t) rand();
+#elif RAND_MAX >= INT16_MAX
+	// only 60 bits of randomness, but this is good enough
+	ret ^= ((uint64_t) rand()) << 45;
+	ret ^= ((uint64_t) rand()) << 30;
+	ret ^= ((uint64_t) rand()) << 15;
+	ret ^= (uint64_t) rand();
+#else
+#error libc rand() does not provide enough randomness.
+#endif
+
+	return ret;
+}
+
 // UDP/TCP checksumming
 void chksum(uint32_t *tmp, const uint16_t *p, int n)
 {

@@ -16,7 +16,6 @@ struct targetstate {
 };
 
 static void shuffle(void *buf, int stride, int n);
-static uint64_t rand64();
 static int popcount(uint32_t x);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
@@ -282,26 +281,6 @@ static void shuffle(void *_buf, int stride, int n)
 		memcpy(&buf[stride * j], &buf[stride * i], stride);
 		memcpy(&buf[stride * i], tmp, stride);
 	}
-}
-
-static uint64_t rand64()
-{
-	uint64_t ret = 0;
-#if RAND_MAX >= INT32_MAX
-	// only 62-bits of randomness, but this is good enough
-	ret ^= ((uint64_t) rand()) << 31;
-	ret ^= (uint64_t) rand();
-#elif RAND_MAX >= INT16_MAX
-	// only 60-bits of randomness, but this is good enough
-	ret ^= ((uint64_t) rand()) << 45;
-	ret ^= ((uint64_t) rand()) << 30;
-	ret ^= ((uint64_t) rand()) << 15;
-	ret ^= (uint64_t) rand();
-#else
-#error built-in rand() does not provide enough randomness.
-#endif
-
-	return ret;
 }
 
 static int popcount(uint32_t x)

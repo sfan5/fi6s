@@ -86,8 +86,6 @@ int scan_main(const char *interface, int quiet)
 	if(banners && ip_type == IP_TYPE_TCP) {
 		if(scan_responder_init(outfile, &outdef, source_port) < 0)
 			goto err;
-		if(tcp_state_init() < 0)
-			goto err;
 	}
 	if(!banners && ip_type == IP_TYPE_UDP)
 		fprintf(stderr, "Warning: UDP scans don't make sense without banners enabled.\n");

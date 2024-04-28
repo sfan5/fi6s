@@ -39,6 +39,9 @@ int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t 
 	responder.outdef = outdef;
 	responder.source_port = source_port;
 
+	if(tcp_state_init() < 0)
+		return -1;
+
 	atomic_store(&responder.tcp_thread_exit, false);
 	if(pthread_create(&responder.tcp_thread, NULL, tcp_thread, NULL) < 0)
 		return -1;

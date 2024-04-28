@@ -7,6 +7,7 @@
 
 #include "tcp.h"
 #include "banner.h"
+#include "util.h"
 
 #define TCP_BUFFER_LEN BANNER_MAX_LENGTH
 #define TCP_STATES_PER_CHUNK 256
@@ -202,7 +203,7 @@ static void internal_find_empty(tcp_state_ptr *out_p)
 
 		if(!cur->next) {
 			if(create_chunk(&cur->next) < 0) {
-				fprintf(stderr, "ERROR: Ran out of memory for TCP sessions\n");
+				log_error("Ran out of memory for TCP sessions");
 				abort();
 			}
 		}
@@ -267,7 +268,7 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 		// the previous packet might still arrive and fill the hole,
 		// but if it doesn't we don't want uninitialized data lying around.
 #ifndef NDEBUG
-		fprintf(stderr, "WARNING: Discontinuity in TCP seqnums (missing %d) in state [%d]\n", count, p->i);
+		log_raw("Discontinuity in TCP seqnums (missing %d) in state %p[%d]", count, p->c, p->i);
 #endif
 		memset(&s->buffer[offset], 0, count);
 	}

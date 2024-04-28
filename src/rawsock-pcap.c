@@ -28,19 +28,19 @@ int rawsock_open(const char *dev, int buffersize)
 		else
 			dumper = pcap_dump_open(handle, dev + 5);
 		if(!dumper) {
-			fprintf(stderr, "Couldn't open pcap dumper: %s\n",
+			log_raw("Couldn't open pcap dumper: %s",
 				handle ? pcap_geterr(handle) : "?");
 		}
 	} else {
 		handle = pcap_open_live(dev, buffersize, 0, 150, errbuf);
 	}
 	if(!handle) {
-		fprintf(stderr, "Couldn't open pcap handle: %s\n", errbuf);
+		log_raw("Couldn't open pcap handle: %s", errbuf);
 		return -1;
 	}
 	linktype = pcap_datalink(handle);
 	if(linktype != DLT_EN10MB && linktype != DLT_RAW) {
-		fprintf(stderr, "Selected interface does not provide Ethernet or IP headers.\n");
+		log_error("Interface does not provide Ethernet or IP headers.");
 		goto err;
 	}
 	pcap_setdirection(handle, PCAP_D_IN);
@@ -81,6 +81,7 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 	}
 	if(flags & RAWSOCK_FILTER_DSTADDR) {
 		char tmp[IPV6_STRING_MAX];
+		assert(dstaddr);
 		ipv6_string(tmp, dstaddr);
 		snprintf_append(fstr, " and dst %s", tmp);
 	}
@@ -89,9 +90,9 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 		snprintf_append(fstr, " and dst port %d", dstport);
 	}
 
-	//printf("pcap filter: %s\n", fstr);
+	log_debug("pcap filter: \"%s\"", fstr);
 	if(pcap_compile(handle, &fp, fstr, 0, PCAP_NETMASK_UNKNOWN) == -1) {
-		fprintf(stderr, "Failed to compile filter expression: %s\n", pcap_geterr(handle));
+		pcap_perror(handle, "pcap_compile");
 		return -1;
 	}
 	// can't set filter on dead handle
@@ -99,7 +100,7 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 		int r = pcap_setfilter(handle, &fp);
 		pcap_freecode(&fp);
 		if(r != 0) {
-			fprintf(stderr, "Failed to install filter: %s\n", pcap_geterr(handle));
+			pcap_perror(handle, "pcap_setfilter");
 			return -1;
 		}
 	} else {
@@ -127,6 +128,7 @@ int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt)
 
 int rawsock_loop(rawsock_callback func)
 {
+	assert(func);
 	atomic_store(&want_break, false);
 
 	// pretend to loop if dead handle (dump mode)
@@ -159,8 +161,10 @@ int rawsock_send(const uint8_t *pkt, int size)
 {
 	if(!rawsock_has_ethernet_headers()) {
 #ifndef NDEBUG
-		if (size <= FRAME_ETH_SIZE)
+		if (size <= FRAME_ETH_SIZE) {
+			log_raw("%s: underflow!", __func__);
 			return -1;
+		}
 #endif
 		pkt = &pkt[FRAME_ETH_SIZE];
 		size -= FRAME_ETH_SIZE;

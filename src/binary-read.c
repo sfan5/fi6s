@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "binary.h"
+#include "util.h"
 
 static inline void skip_align(FILE *f, uint32_t read)
 {
@@ -29,11 +30,11 @@ int binary_read_header(struct reader *r, FILE *f)
 
 	if(h.magic != FILE_MAGIC) {
 		if(h.magic == bswap(FILE_MAGIC))
-			fprintf(stderr, "This file was created on a system of differing endianness, reading it is not (yet) supported.\n");
+			log_error("This file was created on a system of differing endianness, reading it is not (yet) supported.");
 		return -1;
 	}
 	if(h.version != 1) {
-		fprintf(stderr, "Unsupported file version.\n");
+		log_error("Unsupported file version.");
 		return -1;
 	}
 
@@ -62,10 +63,10 @@ int binary_read_record_data(struct reader *r, void *data)
 {
 #ifndef NDEBUG
 	if(r->record_size == 0) {
-		fprintf(stderr, "Reading record data not allowed now!\n");
+		log_raw("%s: reading record data not allowed now!", __func__);
 		return -1;
 	} else if(r->record_size == sizeof(struct rec_header)) {
-		fprintf(stderr, "Trying to read record data despite no data attached!\n");
+		log_raw("%s: trying to read record data despite no data attached!", __func__);
 		return -1;
 	}
 #endif

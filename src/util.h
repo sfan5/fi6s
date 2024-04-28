@@ -5,6 +5,16 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+// Extremely simple logging wrappers
+#define log_raw(fmt, ...) (fprintf(stderr, fmt "\n", ##__VA_ARGS__))
+#define log_error(fmt, ...) log_raw("Error:" fmt, ##__VA_ARGS__)
+#define log_warning(fmt, ...) log_raw("Warning:" fmt, ##__VA_ARGS__)
+#ifdef NDEBUG
+#define log_debug(fmt, ...) ((void)0)
+#else
+#define log_debug log_raw
+#endif
+
 // Port ranges
 #define PORTS_MAX_RANGES 32
 struct ports {

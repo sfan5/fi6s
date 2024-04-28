@@ -27,7 +27,7 @@ void binary_write_record(struct obuf *o, const struct rec_header *h)
 {
 #ifndef NDEBUG
 	if(h->size != sizeof(*h))
-		fprintf(stderr, "Incorrectly sized record!\n");
+		log_raw("%s: incorrectly sized record!", __func__);
 #endif
 	obuf_write(o, h, sizeof(*h));
 	write_align(o, h->size);
@@ -37,7 +37,7 @@ void binary_write_record_with_data(struct obuf *o, const struct rec_header *h, c
 {
 #ifndef NDEBUG
 	if(h->size < sizeof(*h))
-		fprintf(stderr, "Incorrectly sized record!\n");
+		log_raw("%s: incorrectly sized record!", __func__);
 #endif
 	obuf_write(o, h, sizeof(*h));
 	obuf_write(o, data, h->size - sizeof(*h));

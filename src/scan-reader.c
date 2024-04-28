@@ -3,6 +3,7 @@
 #include <inttypes.h>
 
 #include "scan.h"
+#include "util.h"
 #include "output.h"
 #include "binary.h"
 #include "banner.h" // banner_postprocess
@@ -30,10 +31,8 @@ void scan_reader_set_output(FILE *_outfile, const struct outputdef *_outdef)
 int scan_reader_main(FILE *infile)
 {
 	struct reader r;
-	if(binary_read_header(&r, infile) < 0) {
-		fprintf(stderr, "Could not identify scan file header.\n");
+	if(binary_read_header(&r, infile) < 0)
 		return -1;
-	}
 
 	outdef.begin(outfile);
 	while(1) {
@@ -42,7 +41,7 @@ int scan_reader_main(FILE *infile)
 		if(ret == -2)
 			break;
 		if(ret == -1) {
-			fprintf(stderr, "Encountered invalid record header.\n");
+			log_error("Encountered invalid record header.");
 			return -1;
 		}
 
@@ -52,7 +51,7 @@ int scan_reader_main(FILE *infile)
 		if(has_data) {
 			uint32_t data_length = h.size - sizeof(h);
 			if(data_length > RECORD_MAX_DATA) {
-				fprintf(stderr, "Record has too much data (%" PRIu32 " > %d)\n", data_length, RECORD_MAX_DATA);
+				log_error("Record has too much data (%" PRIu32 " > %d)", data_length, RECORD_MAX_DATA);
 				return -1;
 			}
 

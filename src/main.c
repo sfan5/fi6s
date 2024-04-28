@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
 			case 1000: {
 				FILE *f = strcmp(optarg, "-") == 0 ? stdin : fopen(optarg, "rb");
 				if(!f) {
-					printf("Failed to open scan file for reading\n");
+					perror("opening scan file");
 					return 1;
 				}
 				readscan = f;
@@ -119,26 +119,26 @@ int main(int argc, char *argv[])
 				break;
 			case 2003:
 				if(parse_mac(optarg, source_mac) < 0) {
-					printf("Argument to --source-mac is not a valid MAC address\n");
+					log_raw("Argument to --source-mac must be a valid MAC address");
 					return 1;
 				}
 				break;
 			case 2004:
 				if(parse_mac(optarg, router_mac) < 0) {
-					printf("Argument to --router-mac is not a valid MAC address\n");
+					log_raw("Argument to --router-mac must be a valid MAC address");
 					return 1;
 				}
 				break;
 			case 2005:
 				if(parse_ipv6(optarg, source_addr) < 0) {
-					printf("Argument to --source-ip is not a valid IPv6 address\n");
+					log_raw("Argument to --source-ip must be a valid IPv6 address");
 					return 1;
 				}
 				break;
 			case 2007: {
 				int val = strtol_simple(optarg, 10);
 				if(val < 1 || val > 255) {
-					printf("Argument to --ttl must be a number in range 1-255\n");
+					log_raw("Argument to --ttl must be a number in range 1-255");
 					return 1;
 				}
 				ttl = val;
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
 
 			case 2000:
 				if(strlen(optarg) > 1 || (*optarg != '0' && *optarg != '1')) {
-					printf("Argument to --randomize-hosts must be 0 or 1\n");
+					log_raw("Argument to --randomize-hosts must be 0 or 1");
 					return 1;
 				}
 				randomize_hosts = (*optarg == '1');
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
 			case 2001: {
 				int val = strtol_suffix(optarg);
 				if(val <= 0) {
-					printf("Argument to --max-rate must be a positive number\n");
+					log_raw("Argument to --max-rate must be a positive number");
 					return 1;
 				}
 				max_rate = val;
@@ -164,7 +164,7 @@ int main(int argc, char *argv[])
 			case 2006: {
 				int val = strtol_simple(optarg, 10);
 				if(val < 1 || val > 65535) {
-					printf("Argument to --source-port must be a number in range 1-65535\n");
+					log_raw("Argument to --source-port must be a number in range 1-65535");
 					return 1;
 				}
 				source_port = val;
@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
 				} else if(strcmp(optarg, "binary") == 0) {
 					outdef = &output_binary;
 				} else {
-					printf("Argument to --output-format must be one of list, json or binary\n");
+					log_raw("Argument to --output-format must be one of list, json or binary");
 					return 1;
 				}
 				break;
@@ -198,14 +198,14 @@ int main(int argc, char *argv[])
 				return 0;
 			case 'p':
 				if(parse_ports(optarg, &ports) < 0) {
-					printf("Argument to -p must be valid port range(s)\n");
+					log_raw("Argument to -p must be valid port range(s)");
 					return 1;
 				}
 				break;
 			case 'o': {
 				FILE *f = strcmp(optarg, "-") == 0 ? stdout : fopen(optarg, "wb");
 				if(!f) {
-					printf("Failed to open output file for writing\n");
+					perror("open output file");
 					return 1;
 				}
 				outfile = f;
@@ -233,12 +233,12 @@ int main(int argc, char *argv[])
 		if(mode == M_PRINT_NETWORK && argc - optind == 0) {
 			// permitted for convenience
 		} else if(argc - optind < 1) {
-			printf("No target specification(s) given.\n");
+			log_raw("No target specification(s) given.");
 			return 1;
 		}
 	}
 	if(argc - optind > max_args) {
-		printf("Too many arguments.\n");
+		log_raw("Too many arguments.");
 		return 1;
 	}
 
@@ -248,12 +248,12 @@ int main(int argc, char *argv[])
 			if(rawsock_getdev(&interface) < 0)
 				return 1;
 			if(!interface) { // didn't find one
-				fprintf(stderr, "No default interface found, "
-					"provide one using the --interface option.\n");
+				log_raw("No default interface found, "
+					"provide one using the --interface option.");
 				return 1;
 			}
 			if(mode != M_PRINT_NETWORK)
-				fprintf(stderr, "Using default interface '%s'\n", interface);
+				log_raw("Using default interface '%s'", interface);
 		}
 		if(is_all_ff(source_mac, 6))
 			rawsock_getmac(interface, source_mac);
@@ -283,13 +283,13 @@ int main(int argc, char *argv[])
 		} else { // single target spec
 			struct targetspec t;
 			if(target_parse(tspec, &t) < 0) {
-				printf("Failed to parse target specification.\n");
+				log_raw("Failed to parse target specification.");
 				return 1;
 			}
 			target_gen_add(&t);
 		}
 		if(target_gen_finish_add() < 0) {
-			printf("No target specification(s) given.\n");
+			log_raw("No target specification(s) given.");
 			return 1;
 		}
 	}
@@ -348,7 +348,7 @@ int main(int argc, char *argv[])
 				missing = "-p";
 
 			if(missing) {
-				printf("Option %s is required but was not given.\n", missing);
+				log_raw("Option %s is required but was not given.", missing);
 				r = 1;
 			}
 		}
@@ -360,12 +360,14 @@ int main(int argc, char *argv[])
 
 			if (mandatory || useful) {
 				int tmp = rawsock_reserve_port(source_addr, ip_type, source_port == -1 ? 0 : source_port);
-				if (mandatory && tmp == -2)
-					printf("A source port is required but was not given.\n");
-				else if (mandatory && tmp == -1)
-					printf("A source port is required but was not given (automatic reservation failed).\n");
-				else if (tmp >= 0)
+				if (mandatory && tmp == -2) {
+					log_raw("A source port is required but was not given.");
+				} else if (mandatory && tmp == -1) {
+					log_raw("A source port is required but was not given (automatic reservation failed).");
+				} else if (tmp >= 0) {
+					log_debug("reserved source port: %d", tmp);
 					source_port = tmp;
+				}
 			}
 
 			assert(source_port != 0);
@@ -396,7 +398,7 @@ static int read_targets_from_file(const char *filename, int stream_targets)
 	char buf[256];
 	f = fopen(filename, "r");
 	if(!f) {
-		printf("Failed to open target list for reading.\n");
+		perror("open target list");
 		return -1;
 	}
 
@@ -413,7 +415,7 @@ static int read_targets_from_file(const char *filename, int stream_targets)
 			continue; // skip comments and empty lines
 
 		if(target_parse(buf, &t) < 0) {
-			printf("Failed to parse target \"%s\".\n", buf);
+			log_raw("Failed to parse target \"%s\".", buf);
 			fclose(f);
 			return -1;
 		}

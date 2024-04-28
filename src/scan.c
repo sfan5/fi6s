@@ -88,9 +88,9 @@ int scan_main(const char *interface, int quiet)
 			goto err;
 	}
 	if(!banners && ip_type == IP_TYPE_UDP)
-		fprintf(stderr, "Warning: UDP scans don't make sense without banners enabled.\n");
+		log_warning("UDP scans don't make sense without banners enabled.");
 	if(banners && ip_type == IP_TYPE_ICMPV6)
-		fprintf(stderr, "Warning: Enabling banners is a no-op for ICMP scans.\n");
+		log_warning("Enabling banners is a no-op for ICMP scans.");
 
 	// Set capture filters
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
@@ -160,10 +160,10 @@ int scan_main(const char *interface, int quiet)
 	outdef.end(outfile);
 
 	int r = 0;
-	ret:
+ret:
 	rawsock_close();
 	return r;
-	err:
+err:
 	r = 1;
 	goto ret;
 }
@@ -340,7 +340,6 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	const uint8_t *csrcaddr;
 
 	atomic_fetch_add(&pkts_recv, 1);
-	//printf("<< @%lu -- %d bytes\n", ts, len);
 
 	// decode
 	if(rawsock_has_ethernet_headers()) {
@@ -369,7 +368,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	return;
 	perr: ;
 #ifndef NDEBUG
-	fprintf(stderr, "Failed to decode a packet of length %d\n", len);
+	log_raw("%s: errored packet of length %d", __func__, len);
 #endif
 }
 
@@ -394,7 +393,7 @@ static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const 
 	return;
 	perr: ;
 #ifndef NDEBUG
-	fprintf(stderr, "Failed to decode TCP packet of length %d\n", len);
+	log_raw("%s: errored packet of length %d", __func__, len);
 #endif
 }
 
@@ -427,7 +426,7 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 	return;
 	perr: ;
 #ifndef NDEBUG
-	fprintf(stderr, "Failed to decode UDP packet of length %d\n", len);
+	log_raw("%s: errored packet of length %d", __func__, len);
 #endif
 }
 
@@ -448,7 +447,7 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 	return;
 	perr: ;
 #ifndef NDEBUG
-	fprintf(stderr, "Failed to decode ICMPv6 packet of length %d\n", len);
+	log_raw("%s: errored packet of length %d", __func__, len);
 #endif
 }
 

@@ -138,6 +138,7 @@ int target_gen_finish_add(void)
 	if(randomize)
 		shuffle(targets, sizeof(struct targetstate), targets_i);
 
+	log_debug("%u target(s) loaded", targets_i);
 	return 0;
 }
 
@@ -327,7 +328,7 @@ static void fill_cache(void)
 				continue; // skip comments and empty lines
 
 			if(parse_ipv6(buf, &cache[cache_size*16]) < 0) {
-				fprintf(stderr, "Failed to parse target IP \"%s\".\n", buf);
+				log_error("Failed to parse target IP \"%s\".", buf);
 				break;
 			}
 			cache_size++;

@@ -32,7 +32,7 @@ int rawsock_getdev(char **out_dev)
 	pcap_if_t *alldevs, *d;
 
 	if(pcap_findalldevs(&alldevs, errbuf) != 0) {
-		fprintf(stderr, "pcap_findalldevs: %s\n", errbuf);
+		log_raw("pcap_findalldevs: %s", errbuf);
 		return -1;
 	}
 
@@ -152,8 +152,8 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 		if(!success) {
 			char buf2[IPV6_STRING_MAX];
 			ipv6_string(buf2, gateway_ip);
-			fprintf(stderr, "Couldn't determine the MAC address of your gateway, "
-				"which appears to be %s.\n", buf2);
+			log_raw("Couldn't determine the MAC address of your gateway, "
+				"which appears to be %s.", buf2);
 		}
 	}
 
@@ -260,6 +260,7 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uin
 #endif
 
 	if(connect(sock, (struct sockaddr*) dest, sizeof(struct sockaddr_in6)) == -1) {
+		log_debug("%s: errno=%d", __func__, errno);
 		if(errno == ENETUNREACH || errno == EAFNOSUPPORT)
 			fprintf(stderr, "Warning: Your machine does not seem to have "
 				"any IPv6 connectivity (no default route?)\n");
@@ -350,7 +351,7 @@ static int netlink_read(int sock, unsigned int seq, char *buf, int bufsz)
 			return -1;
 		}
 		if(len + have >= bufsz) {
-			fprintf(stderr, "insufficient buffer to read from netlink\n");
+			log_warning("insufficient buffer to read from netlink");
 			return -1;
 		}
 
@@ -362,7 +363,7 @@ static int netlink_read(int sock, unsigned int seq, char *buf, int bufsz)
 			continue; // not the one we want
 		if(msg->nlmsg_type == NLMSG_ERROR) {
 			struct nlmsgerr *err = (struct nlmsgerr*) NLMSG_DATA(msg);
-			fprintf(stderr, "netlink reports error %d\n", err->error);
+			log_error("netlink reports error %d", err->error);
 			return -1;
 		}
 

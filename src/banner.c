@@ -21,30 +21,32 @@ static const struct m_entry typelist[] = {
 	{ "telnet",   { 23 }, 1, 0 },
 	{ "domain",   { 53 }, 1, 1 },
 	{ "http",     { 80, 8080 }, 1, 0 },
-	{ "snmp",     { 161 }, 0, 1, },
-	{ "ike",      { 500, 4500 }, 0, 1, },
-	{ "pptp",     { 1723 }, 1, 0, },
-	{ "mysql",    { 3306 }, 1, 0, },
-	{ "sip",      { 5060 }, 0, 1, },
-	{ "mdns",     { 5353 }, 0, 1, },
+	{ "snmp",     { 161 }, 0, 1 },
+	{ "tls",      { 443 }, 1, 0 },
+	{ "ike",      { 500, 4500 }, 0, 1 },
+	{ "pptp",     { 1723 }, 1, 0 },
+	{ "mysql",    { 3306 }, 1, 0 },
+	{ "sip",      { 5060 }, 0, 1 },
+	{ "mdns",     { 5353 }, 0, 1 },
 	{ NULL, }
 };
 
 // Same as above, but as a map and just the data we need in practice
-static const char *typemap_low[1024] = {
+static const char *typemap_low[512] = {
 	[21] = "ftp",
 	[22] = "ssh",
 	[23] = "telnet",
 	[53] = "domain",
 	[80] = "http",
 	[161] = "snmp",
+	[443] = "tls",
 	[500] = "ike",
 };
 
 const char *banner_service_type(uint8_t ip_type, int port)
 {
 	(void) ip_type;
-	if(port < 1024)
+	if(port < sizeof(typemap_low) / sizeof(*typemap_low))
 		return typemap_low[port];
 	switch(port) {
 		case 1723:
@@ -164,6 +166,30 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 		"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	;
+	// This handshake claims support for DHE + AES-128 and AES-256 either in CBC
+	// or GCM mode, as well as SHA256 and SHA1 for signatures so it should work
+	// with modern as well as older server configs.
+	static const char tls[] =
+		"\x16" // Handshake (22)
+		"\x03\x03" // TLS 1.2
+		"\x00\x3f" // Length
+		"\x01" // Client Hello (1)
+		"\x00\x00\x3b" // Length
+		"\x03\x03" // TLS 1.2
+
+		// Random
+		"\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa"
+		"\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa"
+
+		"\x00" // Session ID length
+		"\x00\x08" // Cipher Suites length (= 8)
+		"\x00\x9e\x00\x9f\x00\x33\x00\x39"
+		"\x01\x00" // Null Compression
+		"\x00\x0a" // Extensions length (= 10)
+
+		// Signature Algorithms
+		"\x00\x0d\x00\x06\x00\x04\x04\x01\x02\x01"
+	;
 
 	switch(port) {
 		case 21:
@@ -173,6 +199,9 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		case 8080:
 			*len = sizeof(http) - 1;
 			return http;
+		case 443:
+			*len = sizeof(tls) - 1;
+			return tls;
 		case 1723:
 			*len = sizeof(pptp) - 1;
 			return pptp;

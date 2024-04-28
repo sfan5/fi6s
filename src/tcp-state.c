@@ -273,10 +273,13 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 		return;
 
 	uint32_t offset = seqnum - s->first_rseqnum;
-	if(offset > TCP_BUFFER_LEN)
+	if(offset > TCP_BUFFER_LEN) {
+		log_debug("%u bytes are past buffer end in state %p[%d]", length, p->c, (int)p->i);
 		return;
-	else if(offset + length > TCP_BUFFER_LEN)
+	} else if(offset + length > TCP_BUFFER_LEN) {
+		log_debug("%u bytes are partially past buffer end in state %p[%d]", length, p->c, (int)p->i);
 		length = TCP_BUFFER_LEN - offset;
+	}
 	memcpy(&s->buffer[offset], data, length);
 
 	if(seqnum > s->max_rseqnum) {
@@ -285,9 +288,7 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 		// seqnum discontinuity, fill the hole with zeros.
 		// the previous packet might still arrive and fill the hole,
 		// but if it doesn't we don't want uninitialized data lying around.
-#ifndef NDEBUG
-		log_raw("Discontinuity in TCP seqnums (missing %d) in state %p[%d]", count, p->c, p->i);
-#endif
+		log_debug("discontinuity in seqnums (missing %u) in state %p[%d]", count, p->c, (int)p->i);
 		memset(&s->buffer[offset], 0, count);
 	}
 	if(seqnum + length > s->max_rseqnum)

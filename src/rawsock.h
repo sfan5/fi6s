@@ -52,7 +52,7 @@ typedef void (*rawsock_callback)(uint64_t /* timestamp */, int /* length */, con
 
 int rawsock_open(const char *dev, int buffersize);
 int rawsock_has_ethernet_headers(void);
-int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_t dstport);
+int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dstport);
 // For testing only, normally you use rawsock_loop.
 int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt);
 int rawsock_loop(rawsock_callback func);
@@ -73,5 +73,14 @@ int rawsock_getdev(char **dev);
 int rawsock_getmac(const char *dev, uint8_t *mac); // MAC of the adapter/intf
 int rawsock_getgw(const char *dev, uint8_t *mac); // MAC of the default router/gateway
 int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip);
+/**
+ * Reserve a local port on the specified IP for the rest of the program lifetime.
+ * The effect should be that the kernel ignores any packets to this tuple.
+ * @param addr IPv6 address
+ * @param type protocol (IP_TYPE)
+ * @param port port number or 0 to let the kernel choose
+ * @return reserved port number or -1 if error or -2 if unsupported
+*/
+int rawsock_reserve_port(const uint8_t *addr, int type, int port);
 
 #endif // _RAWSOCK_H

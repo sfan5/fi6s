@@ -38,27 +38,40 @@ a quick overview about the scan or `--print-hosts` to print all potential IPs.
 
 For more advanced features please consult the output of `fi6s --help`.
 
-## Grabbing banners
+## Collecting banners
 
-Since fi6s has its own TCP stack, the OS' stack needs to disabled to avoid
-interference with banner grabbing (RST packets). This is easily done using
-ip6tables and a constant `--source-port`.
+The data a remote host sends in response to a new connection or probe request
+is called "banner". fi6s makes it easy to collect these.
 
-Banner grabbing is then enabled by passing `--banners`:
+All you need to do is pass the `--banners` option:
+
+	# ./fi6s -p 22 --banners 2001:db8::xx
+
+### UDP
+
+Add the `--udp` flag to your command line:
+
+	# ./fi6s -p 53 --banners --udp 2001:db8::xx
+
+Note that unlike TCP, you will only get useful (or any) results if you scan
+a port whose protocol is supported for probing by fi6s.
+Use `fi6s --list-protocols` to view a list.
+
+### The source port and the IP stack
+
+Since fi6s brings its own minimal TCP/IP stack the operating system has to be prevented
+from trying to talk TCP on the same port fi6s is using, or it would break the scanning process.
+It would typically send RST frames in this case.
+
+By default fi6s will ask the OS to reserve an ephemeral port and use it for the
+duration of the scan. This only works on Linux.
+
+If this doesn't work or you are on a different platform you will have to use a static
+source port and configure your firewall to drop traffic on this port, e.g.:
 
 	# ip6tables -A INPUT -p tcp -m tcp --dport 12345 -j DROP
 	# ./fi6s -p 22 --banners --source-port 12345 2001:db8::xx
 
-### UDP
-
-Dropping packets before they reach the OS stack is not required for UDP scans, but
-is still a good idea to avoid a flood of ICMPv6 unreachable responses.
-
-Other than that you only need an additional `--udp`:
-
-	# ip6tables -A INPUT -p udp -m udp --dport 12345 -j DROP
-	# ./fi6s -p 53 --banners --udp --source-port 12345 2001:db8::xx
-
-Note that unlike with TCP, you will only get useful (or any) results if you scan
-a port whose protocol is supported by fi6s. You can use `fi6s --list-protocols`
-to view a list.
+Since UDP is connection-less there is no need to prevent interference, though this
+is still a good idea to prevent your OS from sending unnecessary ICMPv6 unreachable
+responses (fi6s also tries this by default).

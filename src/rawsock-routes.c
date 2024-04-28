@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <assert.h>
 #include <errno.h>
 #include <pcap.h>
 #include <sys/socket.h>
@@ -12,6 +13,7 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/neighbour.h>
+#include <linux/filter.h>
 #endif
 
 #include "rawsock.h"
@@ -266,7 +268,7 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uin
 	}
 
 	struct sockaddr_in6 tmp;
-	socklen_t tmplen = sizeof(struct sockaddr_in6);
+	socklen_t tmplen = sizeof(tmp);
 	int ret = 0;
 	if(getsockname(sock, (struct sockaddr*) &tmp, &tmplen) == -1)
 		ret = -1;
@@ -275,6 +277,63 @@ int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uin
 
 	close(sock);
 	return ret;
+}
+
+int rawsock_reserve_port(const uint8_t *addr, int type, int port)
+{
+#ifdef __linux__
+	// create a normal server socket but use a filter to drop all packets
+	if(type != IP_TYPE_TCP && type != IP_TYPE_UDP)
+		return -1;
+	int sock = socket(AF_INET6, type == IP_TYPE_TCP ? SOCK_STREAM : SOCK_DGRAM, 0);
+	if(sock == -1) {
+		perror("socket");
+		return -1;
+	}
+
+	struct sock_filter f[] = {
+		{ 0x06, 0, 0, 0 }, // ret #0
+	};
+	struct sock_fprog prog = {
+		.len = sizeof(f) / sizeof(*f),
+		.filter = f
+	};
+	if(setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &prog, sizeof(prog)) == -1) {
+		perror("setsockopt(SO_ATTACH_FILTER)");
+		close(sock);
+		return -1;
+	}
+
+	struct sockaddr_in6 tmp = {0};
+	tmp.sin6_family = AF_INET6;
+	memcpy(tmp.sin6_addr.s6_addr, addr, 16);
+	assert(port >= 0);
+	tmp.sin6_port = htons(port & 0xffff);
+	if(bind(sock, (struct sockaddr*) &tmp, sizeof(tmp)) == -1) {
+		perror("bind");
+		close(sock);
+		return -1;
+	}
+
+	if(type == IP_TYPE_TCP && listen(sock, 1) == -1) {
+		perror("listen");
+		close(sock);
+		return -1;
+	}
+
+	socklen_t tmplen = sizeof(tmp);
+	if(getsockname(sock, (struct sockaddr*) &tmp, &tmplen) == -1) {
+		perror("getsockname");
+		close(sock);
+		return -1;
+	}
+
+	// everything went well. the socket needs to stay open so we leak it here.
+	assert(tmp.sin6_port != 0);
+	return ntohs(tmp.sin6_port);
+#else
+	return -2;
+#endif
 }
 
 #ifdef __linux__

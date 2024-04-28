@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 #include <unistd.h>
 #include <stdatomic.h>
 #include <pcap.h>
@@ -60,7 +61,7 @@ int rawsock_has_ethernet_headers(void)
 		snprintf(&(buffer)[__sl], sizeof(buffer) - __sl - 1, format, __VA_ARGS__); \
 	} while(0)
 
-int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_t dstport)
+int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dstport)
 {
 	char fstr[128];
 	struct bpf_program fp;
@@ -84,6 +85,7 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, uint16_
 		snprintf_append(fstr, " and dst %s", tmp);
 	}
 	if(flags & RAWSOCK_FILTER_DSTPORT) {
+		assert(dstport > 0);
 		snprintf_append(fstr, " and dst port %d", dstport);
 	}
 

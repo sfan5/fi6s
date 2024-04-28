@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 #include <unistd.h> // getpid()
 #include <time.h> // time()
 #include <getopt.h>
@@ -76,6 +77,7 @@ int main(int argc, char *argv[])
 	outfile = stdout;
 	outdef = &output_list;
 
+	srand(time(NULL) ^ getpid());
 	memset(source_mac, 0xff, 6);
 	memset(router_mac, 0xff, 6);
 	memset(source_addr, 0xff, 16);
@@ -265,7 +267,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	srand(time(NULL) ^ getpid());
 	if(target_gen_init() < 0)
 		return 1;
 	target_gen_set_randomized(randomize_hosts);
@@ -321,6 +322,7 @@ int main(int argc, char *argv[])
 		r = 0;
 	} else if(mode == M_PRINT_NETWORK) {
 		char buf[IPV6_STRING_MAX];
+		static_assert(MAC_STRING_MAX <= IPV6_STRING_MAX, "");
 		printf("Interface: %s\n", interface);
 		mac_string(buf, source_mac);
 		printf("Source MAC: %s\n", is_all_ff(source_mac, 6) ? "(missing)" : buf);
@@ -344,13 +346,31 @@ int main(int argc, char *argv[])
 				missing = "--source-ip";
 			else if(ip_type != IP_TYPE_ICMPV6 && !validate_ports(&ports))
 				missing = "-p";
-			else if(banners && ip_type == IP_TYPE_TCP && source_port == -1)
-				missing = "--source-port";
 
 			if(missing) {
 				printf("Option %s is required but was not given.\n", missing);
 				r = 1;
 			}
+		}
+
+		// Handle --source-port: auto-detection, reservation, errors
+		if (r == 0) {
+			const bool mandatory = banners && ip_type == IP_TYPE_TCP;
+			const bool useful = mandatory || (banners && ip_type == IP_TYPE_UDP);
+
+			if (mandatory || useful) {
+				int tmp = rawsock_reserve_port(source_addr, ip_type, source_port == -1 ? 0 : source_port);
+				if (mandatory && tmp == -2)
+					printf("A source port is required but was not given.\n");
+				else if (mandatory && tmp == -1)
+					printf("A source port is required but was not given (automatic reservation failed).\n");
+				else if (tmp >= 0)
+					source_port = tmp;
+			}
+
+			assert(source_port != 0);
+			if (mandatory && source_port == -1)
+				r = 1;
 		}
 
 		if (r == 0) {

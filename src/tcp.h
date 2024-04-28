@@ -46,6 +46,7 @@ void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknu
 int tcp_state_init(void);
 void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,
 	uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum);
+void tcp_state_fini(void);
 
 // both will leave state locked for caller to unlock (or delete)
 int tcp_state_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr *out_p);

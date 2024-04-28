@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 #include <pthread.h>
 
 #include "tcp.h"
@@ -61,6 +62,23 @@ static inline uint64_t monotonic_ms(void);
 int tcp_state_init(void)
 {
 	return create_chunk(&first);
+}
+
+void tcp_state_fini(void)
+{
+	uint32_t mem = 0;
+
+	struct tcp_states_chunk *cur = first;
+	first = NULL;
+	do {
+		mem += sizeof(*cur);
+		pthread_mutex_destroy(&cur->lock);
+		void *tmp = cur;
+		cur = cur->next;
+		free(tmp);
+	} while(cur);
+
+	log_debug("%" PRIu32 " KB used for tcp states", mem >> 10);
 }
 
 void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uint32_t next_lseqnum, uint32_t first_rseqnum)

@@ -243,4 +243,6 @@ void scan_responder_finish()
 {
 	atomic_store(&responder.tcp_thread_exit, true);
 	pthread_join(responder.tcp_thread, NULL);
+
+	tcp_state_fini();
 }

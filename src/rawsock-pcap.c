@@ -139,7 +139,7 @@ int rawsock_loop(rawsock_callback func)
 		return 0;
 	}
 
-	int r = pcap_loop(handle, -1, callback_fwd, (u_char*) func);
+	int r = pcap_loop(handle, -1, callback_fwd, (u_char*) (intptr_t) func);
 	if(r == PCAP_ERROR_BREAK)
 		r = 0;
 	if(r != 0)
@@ -157,7 +157,7 @@ void rawsock_breakloop(void)
 	}
 }
 
-int rawsock_send(const uint8_t *pkt, int size)
+int rawsock_send(const uint8_t *pkt, unsigned int size)
 {
 	if(!rawsock_has_ethernet_headers()) {
 #ifndef NDEBUG
@@ -198,5 +198,5 @@ static void callback_fwd(u_char *user, const struct pcap_pkthdr *hdr, const u_ch
 {
 	if(hdr->caplen < hdr->len) // truncated
 		return;
-	((rawsock_callback) user)(hdr->ts.tv_sec, hdr->caplen, pkt);
+	((rawsock_callback) (intptr_t) user)(hdr->ts.tv_sec, hdr->caplen, pkt);
 }

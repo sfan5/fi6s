@@ -57,7 +57,7 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt);
 int rawsock_loop(rawsock_callback func);
 void rawsock_breakloop(void);
-int rawsock_send(const uint8_t *pkt, int size);
+int rawsock_send(const uint8_t *pkt, unsigned int size);
 void rawsock_close(void);
 
 void rawsock_eth_settings(const uint8_t *src, const uint8_t *dst);

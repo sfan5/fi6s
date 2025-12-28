@@ -55,6 +55,7 @@ void trim_string(char *buf, const char *trimchars); // trims any amount of speci
 void set_thread_name(const char *name); // sets name of calling thread
 uint64_t rand64(void); // number with at least 60 bits of randomness
 uint64_t monotonic_ms(void); // monotonic clock (ms)
+uint64_t monotonic_us(void);
 
 #define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
 	do { \

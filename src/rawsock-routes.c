@@ -22,7 +22,7 @@
 #ifdef __linux__
 #define NL_READ_BUFFER_SIZE (64*1024*1024) // 64 KiB
 
-static int netlink_read(int sock, unsigned int seq, char *buf, int bufsz);
+static int netlink_read(int sock, unsigned int seq, char *buf, unsigned int bufsz);
 static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac);
 #endif
 
@@ -86,8 +86,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 	msg->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	msg->nlmsg_type = RTM_GETROUTE;
 	msg->nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST;
-	msg->nlmsg_seq = 0;
-	msg->nlmsg_pid = getpid();
+	msg->nlmsg_seq = 1;
 	if(send(sock, msg, msg->nlmsg_len, 0) == -1) {
 		perror("send");
 		close(sock);
@@ -95,7 +94,7 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 		return -1;
 	}
 
-	int len = netlink_read(sock, 0, buf, NL_READ_BUFFER_SIZE);
+	int len = netlink_read(sock, 1, buf, NL_READ_BUFFER_SIZE);
 	if(len == -1) {
 		close(sock);
 		free(buf);
@@ -105,12 +104,14 @@ int rawsock_getgw(const char *dev, uint8_t *mac)
 	uint8_t gateway_ip[16];
 	int success = 0;
 	for(; NLMSG_OK(msg, len); msg = NLMSG_NEXT(msg, len)) {
+		if(msg->nlmsg_type != RTM_NEWROUTE)
+			continue;
 		struct rtmsg *rtm = (struct rtmsg*) NLMSG_DATA(msg);
 		if(rtm->rtm_family != AF_INET6 || rtm->rtm_table != RT_TABLE_MAIN)
 			continue;
 
 		struct rtattr *rta;
-		int rtlen;
+		unsigned int rtlen;
 
 		// First, check if this is the right interface
 		char ifname[IF_NAMESIZE] = {0};
@@ -178,7 +179,6 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 	msg->nlmsg_type = RTM_GETNEIGH;
 	msg->nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST;
 	msg->nlmsg_seq = 10;
-	msg->nlmsg_pid = getpid();
 	if(send(sock, msg, msg->nlmsg_len, 0) == -1) {
 		perror("send");
 		return -1;
@@ -189,6 +189,8 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 		return -1;
 	// Process each answer msg
 	for(; NLMSG_OK(msg, len); msg = NLMSG_NEXT(msg, len)) {
+		if(msg->nlmsg_type != RTM_NEWNEIGH)
+			continue;
 		struct ndmsg *ndm = (struct ndmsg*) NLMSG_DATA(msg);
 		if(ndm->ndm_family != AF_INET6)
 			continue;
@@ -197,7 +199,7 @@ static int mac_for_neighbor(int sock, char *buf, const uint8_t* ip, uint8_t *mac
 			continue;
 
 		struct rtattr *rta;
-		int rtlen;
+		unsigned int rtlen;
 
 		// First check that this is the right addr
 		bool success = false;
@@ -338,42 +340,46 @@ int rawsock_reserve_port(const uint8_t *addr, int type, int port)
 }
 
 #ifdef __linux__
-static int netlink_read(int sock, unsigned int seq, char *buf, int bufsz)
+// have I mentioned that netlink has a horrible interface?
+static int netlink_read(int sock, unsigned int seq, char *buf, unsigned int bufsz)
 {
-	struct nlmsghdr *msg;
-	int have = 0;
+	unsigned int head = 0; // first unread nlmsg
+	unsigned int tail = 0; // end of buffer
+	bool done = false;
 
-	// have I mentioned that netlink has a horrible interface?
-	while(1) {
-		int len = recv(sock, buf, bufsz - have, 0);
-		if(len == -1) {
+	while(!done) {
+		// get more bytes
+		int rlen = recv(sock, buf + tail, bufsz - tail, 0);
+		if(rlen == -1) {
 			perror("recv");
 			return -1;
 		}
-		if(len + have >= bufsz) {
+		tail += rlen;
+		if(tail >= bufsz) {
 			log_warning("insufficient buffer to read from netlink");
 			return -1;
 		}
 
-		msg = (struct nlmsghdr*) buf;
-		if(!NLMSG_OK(msg, len))
-			return -1;
-
-		if(msg->nlmsg_seq != seq || msg->nlmsg_pid != getpid())
-			continue; // not the one we want
-		if(msg->nlmsg_type == NLMSG_ERROR) {
-			struct nlmsgerr *err = (struct nlmsgerr*) NLMSG_DATA(msg);
-			log_error("netlink reports error %d", err->error);
-			return -1;
+		// try parsing them
+		struct nlmsghdr *msg = (struct nlmsghdr*) (buf + head);
+		unsigned int mlen = tail - head;
+		for(; NLMSG_OK(msg, mlen); msg = NLMSG_NEXT(msg, mlen)) {
+			if(msg->nlmsg_seq != seq) {
+				log_debug("ignoring unrelated netlink message");
+				msg->nlmsg_type = NLMSG_NOOP; // mark ignored
+				continue;
+			} else if(msg->nlmsg_type == NLMSG_ERROR) {
+				struct nlmsgerr *err = (struct nlmsgerr*) NLMSG_DATA(msg);
+				log_error("netlink reports error %d", err->error);
+				return -1;
+			} else if(!(msg->nlmsg_flags & NLM_F_MULTI) || msg->nlmsg_type == NLMSG_DONE) {
+				done = true;
+				break;
+			}
 		}
-
-		if(msg->nlmsg_type == NLMSG_DONE)
-			break;
-		// advance in buffer
-		buf = &buf[len];
-		have += len;
+		head = tail - mlen;
 	}
 
-	return have;
+	return head;
 }
 #endif

@@ -6,11 +6,11 @@ LDFLAGS =
 LIBS = -lpcap
 
 ifeq ($(BUILD_TYPE),debug)
-CFLAGS += -O1 -g
+CFLAGS += -O1 -ggdb
 #CFLAGS += -fsanitize=type
 else
 ifeq ($(BUILD_TYPE),release)
-CFLAGS += -O3 -ggdb -DNDEBUG
+CFLAGS += -O3 -g -DNDEBUG -flto
 else
 $(error BUILD_TYPE must be one of release or debug)
 endif

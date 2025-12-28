@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <inttypes.h>
 #include <pthread.h>
 
@@ -57,7 +56,6 @@ static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr
 // !! caller is expected to hold chunk lock
 static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_t seqnum);
 // !! end
-static inline uint64_t monotonic_ms(void);
 
 int tcp_state_init(void)
 {
@@ -293,11 +291,4 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 	}
 	if(seqnum + length > s->max_rseqnum)
 		s->max_rseqnum = seqnum + length;
-}
-
-static inline uint64_t monotonic_ms(void)
-{
-	struct timespec t;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	return t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }

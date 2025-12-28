@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h> // isdigit()
+#include <time.h>
 #include "os-endian.h"
 #include <assert.h>
 #include <pthread.h>
@@ -340,6 +341,24 @@ uint64_t rand64(void)
 #endif
 
 	return ret;
+}
+
+static uint64_t monotonic_us(void)
+{
+	struct timespec t;
+#ifdef CLOCK_MONOTONIC_RAW
+	if (clock_gettime(CLOCK_MONOTONIC_RAW, &t) != 0)
+#endif
+	{
+		if (clock_gettime(CLOCK_MONOTONIC, &t) != 0)
+			return 0; // not really supposed to fail
+	}
+	return t.tv_sec * 1000000 + t.tv_nsec / 1000;
+}
+
+uint64_t monotonic_ms(void)
+{
+	return monotonic_us() / 1000;
 }
 
 // UDP/TCP checksumming

@@ -131,9 +131,9 @@ int scan_main(const char *interface, int quiet)
 		if(!quiet) {
 			float progress = target_gen_progress();
 			if(progress < 0.0f)
-				fprintf(stderr, "snt:%5u rcv:%5u p:???%%\r", cur_sent, cur_recv);
+				fprintf(stderr, "snt:%5u rcv:%5u p:???%% \r", cur_sent, cur_recv);
 			else
-				fprintf(stderr, "snt:%5u rcv:%5u p:%3d%%\r", cur_sent, cur_recv, (int) (progress*100));
+				fprintf(stderr, "snt:%5u rcv:%5u p:%3d%% \r", cur_sent, cur_recv, (int) (progress*100));
 		}
 		cur_status = atomic_load(&status_bits);
 		if(cur_status)

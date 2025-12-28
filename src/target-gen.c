@@ -72,11 +72,19 @@ float target_gen_progress(void)
 	// Those are added together and used to calculate the percentage (don't forget the cache though)
 	// It only took two^Wthree tries to get this right!
 	uint64_t total = 0, done = 0;
-	for(int i = 0; i < targets_i; i++)
-		progress_single(&targets[i], &total, &done);
-	if (total == 0)
+	for(int i = 0; i < targets_i; i++) {
+		struct targetstate tmp = targets[i];
+		progress_single(&tmp, &total, &done);
+	}
+	// This code isn't thread-safe (the scan thread is happily mutating everything)
+	// so fail safe on bogus values.
+	if(total == 0 || done > total)
 		return -1.0f;
-	done -= cache_size - cache_i;
+	unsigned int in_cache = cache_size - cache_i;
+	if(done < in_cache)
+		return 0.0f;
+	else
+		done -= in_cache;
 
 	return (done * 1000 / total) / 1000.0f;
 }
@@ -94,15 +102,12 @@ int target_gen_add(const struct targetspec *s)
 	if(mode_streaming)
 		return -1;
 
-	int i = targets_i++;
+	unsigned int i = targets_i++;
 	if(REALLOC_TARGETS() < 0)
 		return -1;
 
-	targets[i].done = 0;
-	targets[i].delayed_start = 0;
+	memset(&targets[i], 0, sizeof(struct targetstate));
 	memcpy(&targets[i].spec, s, sizeof(struct targetspec));
-	memset(targets[i].cur, 0, 16);
-
 	return 0;
 }
 
@@ -123,7 +128,7 @@ int target_gen_finish_add(void)
 			max = tmp;
 	}
 	// adjust starting point of other targets
-	for(int i = 0; i < targets_i; i++) {
+	for(int i = 0; max > 1 && i < targets_i; i++) {
 		uint64_t tmp = 0, junk = 0;
 		progress_single(&targets[i], &tmp, &junk);
 		if(tmp == max)

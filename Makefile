@@ -8,6 +8,7 @@ LIBS = -lpcap
 ifeq ($(BUILD_TYPE),debug)
 CFLAGS += -O1 -ggdb
 #CFLAGS += -fsanitize=type
+#CFLAGS += -fsanitize=address
 else
 ifeq ($(BUILD_TYPE),release)
 CFLAGS += -O3 -g -DNDEBUG -flto

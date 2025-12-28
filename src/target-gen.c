@@ -12,6 +12,7 @@ struct targetstate {
 	struct targetspec spec;
 	uint8_t cur[16];
 	uint64_t delayed_start;
+	uint8_t tmp; // (only used during sort)
 	unsigned done : 1;
 };
 
@@ -111,6 +112,40 @@ int target_gen_add(const struct targetspec *s)
 	return 0;
 }
 
+static inline uint8_t mylog2(uint64_t val)
+{
+	uint8_t ret = 0;
+	while(val) {
+		val >>= 1;
+		ret++;
+	}
+	return ret;
+}
+
+static int cmp_target(const void *a, const void *b)
+{
+	const struct targetstate *ta = a, *tb = b;
+	return (ta->tmp < tb->tmp) - (ta->tmp > tb->tmp); // descending
+}
+
+static void dump_targets(int ndump)
+{
+	FILE *to = stderr;
+	char buf[IPV6_STRING_MAX];
+	for(int i = 0; i < targets_i && i < ndump; i++) {
+		const struct targetstate *t = &targets[i];
+		ipv6_string(buf, t->spec.addr);
+		fprintf(to, "[%d] = { %s, ", i, buf);
+		ipv6_string(buf, t->spec.mask);
+		fprintf(to, "%s, ", buf);
+		ipv6_string(buf, t->cur);
+		fprintf(to, "%s, %#" PRIx64 ", %d, %d }\n", buf,
+			t->delayed_start, (int)t->tmp, (int)t->done);
+	}
+	if (targets_i > ndump)
+		fprintf(to, "...\n");
+}
+
 int target_gen_finish_add(void)
 {
 	if(mode_streaming)
@@ -118,31 +153,48 @@ int target_gen_finish_add(void)
 	if(targets_i == 0)
 		return -1;
 
-#if TARGET_EVEN_SPREAD
 	// find "longest" target
 	uint64_t max = 0;
 	for(int i = 0; i < targets_i; i++) {
 		uint64_t tmp = 0, junk = 0;
 		progress_single(&targets[i], &tmp, &junk);
+		targets[i].tmp = mylog2(tmp);
 		if(tmp > max)
 			max = tmp;
 	}
-	// adjust starting point of other targets
-	for(int i = 0; max > 1 && i < targets_i; i++) {
-		uint64_t tmp = 0, junk = 0;
-		progress_single(&targets[i], &tmp, &junk);
-		if(tmp == max)
-			continue;
-		assert(max > tmp);
-		// set begin randomly between the first and last possible starting point
-		targets[i].delayed_start = rand64() % (max - tmp + 1);
+	if(TARGET_EVEN_SPREAD && max > 1) {
+		// adjust starting point of other targets
+		for(int i = 0; i < targets_i; i++) {
+			uint64_t tmp = 0, junk = 0;
+			progress_single(&targets[i], &tmp, &junk);
+			if(tmp == max)
+				continue;
+			assert(max > tmp);
+			// set begin randomly between the first and last possible starting point
+			targets[i].delayed_start = rand64() % (max - tmp + 1);
+		}
 	}
-#endif
 
-	if(randomize)
-		shuffle(targets, sizeof(struct targetstate), targets_i);
+	// since we'll be iterating the array often, optimize most-used ones first
+	qsort(targets, targets_i, sizeof(struct targetstate), cmp_target);
+
+	if(randomize) {
+		// still randomize but only within same "class"
+		int start = 0;
+		while(start < targets_i) {
+			void *t0 = &targets[start];
+			int end = start;
+			while(end < targets_i && cmp_target(t0, &targets[end]) == 0)
+				end++;
+			shuffle(t0, sizeof(struct targetstate), end - start);
+			start = end;
+		}
+	}
 
 	log_debug("%u target(s) loaded", targets_i);
+#ifndef NDEBUG
+	dump_targets(6);
+#endif
 	return 0;
 }
 

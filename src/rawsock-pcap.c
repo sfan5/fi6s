@@ -38,7 +38,7 @@ int rawsock_open(const char *dev, int buffersize)
 				handle ? pcap_geterr(handle) : "?");
 		}
 	} else {
-		handle = pcap_open_live(dev, buffersize, 0, 150, errbuf);
+		handle = pcap_open_live(dev, buffersize, 0, 1, errbuf);
 	}
 	if(!handle) {
 		log_raw("Couldn't open pcap handle: %s", errbuf);

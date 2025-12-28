@@ -355,7 +355,7 @@ uint64_t rand64(void)
 	return ret;
 }
 
-static uint64_t monotonic_us(void)
+uint64_t monotonic_us(void)
 {
 	struct timespec t;
 #ifdef CLOCK_MONOTONIC_RAW

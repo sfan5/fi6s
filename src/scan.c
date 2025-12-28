@@ -371,7 +371,7 @@ err:
 
 static void *send_thread_icmp(void *unused)
 {
-	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE];
+	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE + 4];
 	uint8_t dstaddr[16];
 
 	(void) unused;
@@ -382,13 +382,17 @@ static void *send_thread_icmp(void *unused)
 	rawsock_ip_prepare(IP_FRAME(packet), IP_TYPE_ICMPV6);
 	if(target_gen_next(dstaddr) < 0)
 		goto err;
-	rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	ICMP_HEADER(packet)->type = 128; // Echo Request
 	ICMP_HEADER(packet)->code = 0;
 	ICMP_HEADER(packet)->body32 = scan_randomness;
 
 	while(1) {
-		icmp_checksum(IP_FRAME(packet), ICMP_HEADER(packet), 0);
+		rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE + 4, dstaddr);
+		uint8_t *d = UDP_DATA(packet);
+		uint32_t now = monotonic_us() / 100;
+		*((uint32_t*) d) = now;
+
+		icmp_checksum(IP_FRAME(packet), ICMP_HEADER(packet), 4);
 		rawsock_send(packet, sizeof(packet));
 
 		RATE_CONTROL();
@@ -396,7 +400,6 @@ static void *send_thread_icmp(void *unused)
 		// Next target
 		if(target_gen_next(dstaddr) < 0)
 			break;
-		rawsock_ip_modify(IP_FRAME(packet), ICMP_HEADER_SIZE, dstaddr);
 	}
 
 	atomic_fetch_or(&status_bits, SEND_FINISHED);
@@ -572,7 +575,7 @@ static void handle_icmp_error(uint64_t ts, int len, const uint8_t *packet, const
 
 static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
-	const int minlen = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE;
+	const int minlen = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE + 4;
 	if(len < minlen)
 		goto perr;
 
@@ -590,6 +593,17 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 	int v2;
 	rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
 	outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_ICMP, 0, v2, OUTPUT_STATUS_UP);
+
+	uint8_t *d = UDP_DATA(packet);
+	uint32_t xts = monotonic_us() / 100;
+	uint32_t stored = *((uint32_t*) d);
+	if (stored > xts) // overflow
+		xts = (UINT32_MAX - stored) + xts;
+	else
+		xts -= stored;
+	char sbuf[32];
+	snprintf(sbuf, sizeof(sbuf), "%.1fms", xts / 10.0f);
+	outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_ICMP, 0, sbuf, strlen(sbuf));
 
 	return;
 	perr: ;

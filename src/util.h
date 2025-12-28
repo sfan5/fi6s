@@ -57,8 +57,8 @@ uint64_t rand64(void); // number with at least 60 bits of randomness
 
 // UDP/TCP checksumming
 #define CHKSUM_INITIAL 0x0000
-void chksum(uint32_t *tmp, const uint16_t *p, int n);
-uint16_t chksum_final(uint32_t tmp, const uint16_t *p, int n);
+uint32_t chksum(uint32_t sum, const void *p, unsigned int n);
+uint16_t chksum_final(uint32_t tmp, const void *p, unsigned int n);
 
 // Output buffering
 struct obuf {

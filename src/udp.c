@@ -25,16 +25,16 @@ void udp_checksum(const struct frame_ip *ipf, struct udp_header *pkt, uint16_t d
 		.zero = {0},
 		.ipproto = 0x11, // IPPROTO_UDP
 	};
-	uint32_t csum = CHKSUM_INITIAL;
 
 	static_assert(sizeof(ph) == PSEUDO_HEADER_SIZE, "incorrect PSEUDO_HEADER_SIZE");
 	static_assert(sizeof(*pkt) == UDP_HEADER_SIZE,  "incorrect UDP_HEADER_SIZE");
 
-	chksum(&csum, (uint16_t*) ipf->src, 16); // ph->src
-	chksum(&csum, (uint16_t*) ipf->dest, 16); // ph->dest
-	chksum(&csum, (uint16_t*) &ph.len, 8); // rest of ph
+	uint32_t csum = CHKSUM_INITIAL;
+	csum = chksum(csum, ipf->src, 16); // ph->src
+	csum = chksum(csum, ipf->dest, 16); // ph->dest
+	csum = chksum(csum, &ph.len, 8); // rest of ph
 	pkt->csum = 0;
-	pkt->csum = chksum_final(csum, (uint16_t*) pkt, UDP_HEADER_SIZE + dlen); // packet contents + data
+	pkt->csum = chksum_final(csum, pkt, UDP_HEADER_SIZE + dlen); // packet contents + data
 }
 
 void udp_decode(const struct udp_header *pkt, int *srcport, int *dstport)

@@ -1,12 +1,13 @@
 BUILD_TYPE ?= debug
 
-CFLAGS = -pipe -std=gnu11 -pthread -fno-strict-aliasing
+CFLAGS = -pipe -std=gnu11 -pthread
 CFLAGS += -Wall -Wextra -Wno-sign-compare -Wcast-align
 LDFLAGS =
 LIBS = -lpcap
 
 ifeq ($(BUILD_TYPE),debug)
 CFLAGS += -O1 -g
+#CFLAGS += -fsanitize=type
 else
 ifeq ($(BUILD_TYPE),release)
 CFLAGS += -O3 -ggdb -DNDEBUG

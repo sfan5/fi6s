@@ -343,32 +343,53 @@ uint64_t rand64(void)
 }
 
 // UDP/TCP checksumming
-void chksum(uint32_t *tmp, const uint16_t *p, int n)
+#ifdef __has_builtin
+#if __has_builtin(__builtin_assume_aligned)
+#define assume_aligned(p, n) __builtin_assume_aligned(p, n)
+#else
+#define assume_aligned(p, n) (p)
+#endif
+#else
+#define assume_aligned(p, n) (p)
+#endif
+
+uint32_t chksum(uint32_t sum, const void *p_, unsigned int n)
 {
-	assert(((intptr_t) p) % sizeof(uint16_t) == 0); // align
+	assert(((intptr_t) p_) % 2 == 0); // align
 	assert(n % 2 == 0);
-	uint32_t sum = *tmp;
+
+	// we need to access the bytes through an uint8_t to not violate strict aliasing.
+	// the assume_aligned can help the compiler optimize despite that.
+	const uint8_t *p = assume_aligned(p_, 2);
 	while(n > 0) {
-		sum += *p++;
+		// note: this needs to be a native endian read so the compiler can
+		// vectorize this code. I'm lazy so just go with LE.
+		sum += p[0] | (p[1] << 8);
+		p += 2;
 		n -= 2;
 	}
-	*tmp = sum;
+	return sum;
 }
 
-uint16_t chksum_final(uint32_t sum, const uint16_t *p, int n)
+uint16_t chksum_final(uint32_t sum, const void *p_, unsigned int n)
 {
-	assert(((intptr_t) p) % sizeof(uint16_t) == 0);
+	assert(((intptr_t) p_) % 2 == 0); // align
+
+	const uint8_t *p = assume_aligned(p_, 2);
 	while(n > 1) {
-		sum += *p++;
+		sum += p[0] | (p[1] << 8);
+		p += 2;
 		n -= 2;
 	}
 	if(n == 1)
-		sum += *((uint8_t*) p);
+		sum += p[0];
 
+	// fold
 	sum = (sum>>16) + (sum & 0xffff);
 	sum = sum + (sum>>16);
-
-	return ~sum;
+	uint16_t r = (~sum) & 0xffff;
+	// we read the bytes as little-endian so swap as needed
+	return le16toh(r);
 }
 
 // Output buffering

@@ -191,7 +191,7 @@ int target_gen_finish_add(void)
 	return 0;
 }
 
-int target_gen_next(uint8_t *dst)
+int target_gen_peek(uint8_t *dst)
 {
 	if(cache_i == cache_size) {
 		fill_cache();
@@ -201,8 +201,16 @@ int target_gen_next(uint8_t *dst)
 			shuffle(cache, 16, cache_size);
 	}
 	memcpy(dst, &cache[cache_i*16], 16);
-	cache_i++;
 	return 0;
+}
+
+int target_gen_next(uint8_t *dst)
+{
+	if (target_gen_peek(dst) == 0) {
+		cache_i++;
+		return 0;
+	}
+	return -1;
 }
 
 void target_gen_print_summary(int max_rate, int nports)

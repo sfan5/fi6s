@@ -247,37 +247,56 @@ int rawsock_getmac(const char *dev, uint8_t *mac)
 #endif
 }
 
-int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip)
+int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip, int advice)
 {
-	int sock;
+	int sock, ret = 0;
 	sock = socket(AF_INET6, SOCK_DGRAM, 0);
-	if(sock == -1)
-		return -1;
+	if(sock == -1) {
+		ret = -1;
+		goto afnosupport;
+	}
 
 #ifdef __linux__
 	// Attempt to bind the socket to the interface we are actually going to use (may fail)
-	setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface) + 1);
+	if(interface)
+		setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface) + 1);
 #else
 	(void) interface;
 #endif
 
 	if(connect(sock, (struct sockaddr*) dest, sizeof(struct sockaddr_in6)) == -1) {
 		log_debug("%s: errno=%d", __func__, errno);
-		if(errno == ENETUNREACH || errno == EAFNOSUPPORT)
-			fprintf(stderr, "Warning: Your machine does not seem to have "
-				"any IPv6 connectivity (no default route?)\n");
+		if(errno == EAFNOSUPPORT) {
+			ret = -1;
+			goto afnosupport;
+		}
+		if(errno == ENETUNREACH) {
+			if(advice == 1) {
+				log_warning("Your machine does not seem to have any IPv6 "
+					"connectivity (no default route?)");
+			} else if(advice == 2) {
+				char buf[IPV6_STRING_MAX];
+				ipv6_string(buf, dest->sin6_addr.s6_addr);
+				log_warning("Your machine might not have working IPv6 "
+					"connectivity (to %s)", buf);
+			}
+		}
 		close(sock);
 		return -1;
 	}
 
 	struct sockaddr_in6 tmp;
 	socklen_t tmplen = sizeof(tmp);
-	int ret = 0;
 	if(getsockname(sock, (struct sockaddr*) &tmp, &tmplen) == -1)
 		ret = -1;
 	else
 		memcpy(ip, tmp.sin6_addr.s6_addr, 16);
 
+	if(0) {
+afnosupport:
+		if(advice > 0)
+			log_warning("Your machine does not seem to have working IPv6");
+	}
 	close(sock);
 	return ret;
 }

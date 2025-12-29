@@ -72,7 +72,8 @@ void rawsock_ip_decode(const struct frame_ip *f, int *type, int *length, int *tt
 int rawsock_getdev(char **dev);
 int rawsock_getmac(const char *dev, uint8_t *mac); // MAC of the adapter/intf
 int rawsock_getgw(const char *dev, uint8_t *mac); // MAC of the default router/gateway
-int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip);
+// advice: 0=quiet, 1=default route, 2=specific IP
+int rawsock_getsrcip(const struct sockaddr_in6 *dest, const char *interface, uint8_t *ip, int advice);
 /**
  * Reserve a local port on the specified IP for the rest of the program lifetime.
  * The effect should be that the kernel ignores any packets to this tuple.

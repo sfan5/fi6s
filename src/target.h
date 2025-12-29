@@ -25,6 +25,7 @@ int target_gen_add(const struct targetspec *s);
 int target_gen_finish_add(void);
 void target_gen_print_summary(int max_rate, int nports);
 
+int target_gen_peek(uint8_t *dst);
 int target_gen_next(uint8_t *dst);
 float target_gen_progress(void);
 

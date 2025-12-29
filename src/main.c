@@ -243,6 +243,7 @@ int main(int argc, char *argv[])
 	}
 
 	// attempt to auto-detect network settings
+	bool interface_auto = false;
 	if(mode == M_SCAN || mode == M_PRINT_NETWORK) {
 		if(!interface) {
 			if(rawsock_getdev(&interface) < 0)
@@ -254,24 +255,24 @@ int main(int argc, char *argv[])
 			}
 			if(mode != M_PRINT_NETWORK)
 				log_raw("Using default interface '%s'", interface);
+			interface_auto = true;
 		}
 		if(is_all_ff(source_mac, 6))
 			rawsock_getmac(interface, source_mac);
 		if(is_all_ff(router_mac, 6))
 			rawsock_getgw(interface, router_mac);
-		if(is_all_ff(source_addr, 16)) {
-			struct sockaddr_in6 globaddr = {0};
-			globaddr.sin6_family = AF_INET6;
-			globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
-			rawsock_getsrcip(&globaddr, interface, source_addr);
-		}
+	}
+	if(mode == M_PRINT_NETWORK && is_all_ff(source_addr, 16)) {
+		// this is detected differently if doing an actual scan
+		struct sockaddr_in6 globaddr = {0};
+		globaddr.sin6_family = AF_INET6;
+		globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
+		rawsock_getsrcip(&globaddr, interface, source_addr, 1);
 	}
 
 	if(target_gen_init() < 0)
 		return 1;
 	target_gen_set_randomized(randomize_hosts);
-	rawsock_eth_settings(source_mac, router_mac);
-	rawsock_ip_settings(source_addr, ttl);
 
 	const char *tspec = argv[optind];
 	if(mode == M_READSCAN || mode == M_PRINT_NETWORK) {
@@ -331,10 +332,35 @@ int main(int argc, char *argv[])
 		printf("Time-To-Live: %d\n", ttl);
 		ipv6_string(buf, source_addr);
 		printf("Source IP: %s\n", is_all_ff(source_addr, 16) ? "(missing)" : buf);
+		printf("The auto-detected source IP may differ depending on the scan target.\n");
 
 		r = 0;
 	} else {
 		r = target_gen_sanity_check() < 0 ? 1 : 0;
+
+		if (r == 0 && is_all_ff(source_addr, 16)) {
+			// determine source address from first actual target
+			struct sockaddr_in6 testaddr = {0};
+			testaddr.sin6_family = AF_INET6;
+			target_gen_peek(testaddr.sin6_addr.s6_addr);
+			if(rawsock_getsrcip(&testaddr, interface, source_addr, 2) == 0) {
+				char buf[IPV6_STRING_MAX], buf2[IPV6_STRING_MAX];
+				ipv6_string(buf, source_addr);
+				log_debug("detected source IP: %s", buf);
+
+				// helpful extra check
+				uint8_t source_addr2[16];
+				if(interface_auto &&
+					rawsock_getsrcip(&testaddr, NULL, source_addr2, 0) == 0 &&
+					memcmp(source_addr2, source_addr, 16) != 0) {
+					ipv6_string(buf2, source_addr2);
+					log_warning("It looks like your scan target may not be "
+						"reached via the default interface. Consider specifying "
+						"--interface manually.");
+					log_raw("(potential source IPs: %s vs. %s)", buf, buf2);
+				}
+			}
+		}
 
 		if (r == 0) {
 			const char* missing = NULL;
@@ -352,6 +378,9 @@ int main(int argc, char *argv[])
 				r = 1;
 			}
 		}
+
+		rawsock_eth_settings(source_mac, router_mac);
+		rawsock_ip_settings(source_addr, ttl);
 
 		// Handle --source-port: auto-detection, reservation, errors
 		if (r == 0) {

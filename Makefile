@@ -8,13 +8,20 @@ LIBS = -lpcap
 ifeq ($(BUILD_TYPE),debug)
 CFLAGS += -O1 -ggdb
 #CFLAGS += -fsanitize=type
-#CFLAGS += -fsanitize=address
 else
 ifeq ($(BUILD_TYPE),release)
 CFLAGS += -O3 -g -DNDEBUG -flto
 else
 $(error BUILD_TYPE must be one of release or debug)
 endif
+endif
+ifeq ($(ASAN),1)
+CFLAGS += -fsanitize=address
+LDFLAGS += -fsanitize=address
+endif
+ifeq ($(UBSAN),1)
+CFLAGS += -fsanitize=undefined
+LDFLAGS += -fsanitize=undefined
 endif
 
 PREFIX ?= /usr

@@ -40,6 +40,14 @@ jobs:
 
 
   clang:
+    name: "clang (sanitize: ${{ matrix.c.san }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        c:
+          - { san: "ASAN" }
+          - { san: "UBSAN" }
+          - { san: "none" }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +58,7 @@ jobs:
 
       - name: Build
         run: |
-          make -j2
+          make ${{ matrix.c.san }}=1 -j2
         env:
           CC: clang
 

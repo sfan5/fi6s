@@ -38,6 +38,9 @@ jobs:
         run: |
           sudo ./util/ci-test2.sh
 
+      - name: Test 3
+        run: |
+          sudo ./util/ci-test3.sh
 
   clang:
     name: "clang (sanitize: ${{ matrix.c.san }})"
@@ -69,3 +72,7 @@ jobs:
       - name: Test 2
         run: |
           sudo ./util/ci-test2.sh
+
+      - name: Test 3
+        run: |
+          sudo ./util/ci-test3.sh

@@ -233,7 +233,8 @@ int main(int argc, char *argv[])
 		if(mode == M_PRINT_NETWORK && argc - optind == 0) {
 			// permitted for convenience
 		} else if(argc - optind < 1) {
-			log_raw("No target specification(s) given.");
+			log_raw("No target specification(s) given%s.",
+				argc == 1 ? ", try --help" : "");
 			return 1;
 		}
 	}
@@ -523,6 +524,10 @@ static void usage(void)
 	printf("  For example, you could perform a scan that captures banners but only extract open/closed ports:\n");
 	printf("    $ fi6s -o scan.bin --output-format binary -b 2001:db8::xx\n");
 	printf("    $ fi6s --readscan scan.bin --show-closed\n");
+#ifndef NDEBUG
+	printf("\n");
+	printf("(debug build)\n");
+#endif
 }
 
 static inline bool is_all_ff(const uint8_t *buf, int len)

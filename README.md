@@ -75,3 +75,31 @@ source port and configure your firewall to drop traffic on this port, e.g.:
 Since UDP is connection-less there is no need to prevent interference, though this
 is still a good idea to prevent your OS from sending unnecessary ICMPv6 unreachable
 responses (fi6s also tries this by default).
+
+### Selecting the source IP
+
+A big advantage of IPv6 is the large address space, and another way of avoiding
+the IP stack problem described above is to just use a different source IP.
+
+This IP should not be assigned to your local machine, but it *must* be statically routed
+to your machine, because fi6s will not answer NDP queries.
+
+To check if an IP is working correctly you can simply ping a known public IP, e.g.:
+
+	# ./fi6s --icmp --source-ip $your_ip 2001:4860:4860::8888
+
+## Limitations
+
+In order to permit the design of fi6s some assumptions had to be made about
+the network environment. These do not impact typical usage at all but listed here
+for completeness.
+
+This means fi6s may not perform as expected or outright not work if:
+* you have a non-trivial routing table (it will be ignored. fi6s expects a single gateway)
+* you are scanning targets in the local network (fi6s does not do neighbor discovery)
+* you have a connection-tracking firewall
+* your IP or router's MAC changes mid-scan ¯\\\_(ツ)_/¯
+* your network has consistent packet loss
+
+For banner collection note that fi6s does not come with anything resembling a real TCP
+stack. It merely supports sending one query and reading response data that follows. Resends are not implemented.

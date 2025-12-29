@@ -462,6 +462,7 @@ static inline int source_port_rand(void)
 {
 	int v;
 	v = rand() & 0xffff; // random 16-bit number
-	v |= 16384; // ensure that 1) it's not zero 2) it's >= 16384
+	if(v < 16384)
+		v = 16384;
 	return v;
 }

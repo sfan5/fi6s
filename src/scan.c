@@ -44,6 +44,8 @@ static uint32_t scan_randomness;
 static atomic_uint pkts_sent, pkts_recv;
 static atomic_uchar status_bits;
 
+static atomic_int_least64_t time_mono_offset; // us offset
+
 static inline int source_port_rand(void);
 static void *send_thread_tcp(void *unused);
 static void *send_thread_udp(void *unused);
@@ -89,6 +91,23 @@ void scan_set_output(FILE *_outfile, const struct outputdef *_outdef)
 	memcpy(&outdef, _outdef, sizeof(struct outputdef));
 }
 
+static void update_time_mono_offset(void)
+{
+	if(ip_type != IP_TYPE_ICMPV6)
+		return;
+	struct timespec real;
+	clock_gettime(CLOCK_REALTIME, &real);
+	int_least64_t val = ((real.tv_sec * 1000000) + real.tv_nsec / 1000) -
+			monotonic_us();
+
+	int_least64_t old = atomic_exchange(&time_mono_offset, val);
+	if(old) {
+		val = old > val ? (old - val) : (val - old);
+		if(val >= 384)
+			log_warning("Detected clock drift of %dus", (int)val);
+	}
+}
+
 int scan_main(const char *interface, int quiet)
 {
 	if(rawsock_open(interface, 65535) < 0)
@@ -97,6 +116,7 @@ int scan_main(const char *interface, int quiet)
 	atomic_store(&pkts_sent, 0);
 	atomic_store(&pkts_recv, 0);
 	atomic_store(&status_bits, 0);
+	update_time_mono_offset();
 	if(banners && ip_type == IP_TYPE_TCP) {
 		if(scan_responder_init(outfile, &outdef, source_port, scan_randomness) < 0)
 			goto err;
@@ -143,6 +163,7 @@ int scan_main(const char *interface, int quiet)
 		// (used for rate control)
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
+		update_time_mono_offset();
 		if(!quiet) {
 			float progress = target_gen_progress();
 			unsigned int tcp_sent = 0;
@@ -446,9 +467,9 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 
 	// call handler
 	if(v == IP_TYPE_TCP)
-		recv_handler_tcp(ts, len, packet, csrcaddr);
+		recv_handler_tcp(ts / 1000000, len, packet, csrcaddr);
 	else if(v == IP_TYPE_UDP)
-		recv_handler_udp(ts, len, packet, csrcaddr);
+		recv_handler_udp(ts / 1000000, len, packet, csrcaddr);
 	else if(v == IP_TYPE_ICMPV6)
 		recv_handler_icmp(ts, len, packet, csrcaddr);
 	else
@@ -590,12 +611,14 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 	if(ICMP_HEADER(packet)->body32 != scan_randomness)
 		return;
 
+	const uint64_t ts_sec = ts / 1000000;
+
 	int v2;
 	rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-	outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_ICMP, 0, v2, OUTPUT_STATUS_UP);
+	outdef.output_status(outfile, ts_sec, csrcaddr, OUTPUT_PROTO_ICMP, 0, v2, OUTPUT_STATUS_UP);
 
 	uint8_t *d = UDP_DATA(packet);
-	uint32_t xts = monotonic_us() / 100;
+	uint32_t xts = (ts - atomic_load(&time_mono_offset)) / 100;
 	uint32_t stored = *((uint32_t*) d);
 	if (stored > xts) // overflow
 		xts = (UINT32_MAX - stored) + xts;
@@ -603,7 +626,7 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 		xts -= stored;
 	char sbuf[32];
 	snprintf(sbuf, sizeof(sbuf), "%.1fms", xts / 10.0f);
-	outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_ICMP, 0, sbuf, strlen(sbuf));
+	outdef.output_banner(outfile, ts_sec, csrcaddr, OUTPUT_PROTO_ICMP, 0, sbuf, strlen(sbuf));
 
 	return;
 	perr: ;

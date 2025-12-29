@@ -38,7 +38,7 @@ int rawsock_open(const char *dev, int buffersize)
 				handle ? pcap_geterr(handle) : "?");
 		}
 	} else {
-		handle = pcap_open_live(dev, buffersize, 0, 1, errbuf);
+		handle = pcap_open_live(dev, buffersize, 0, 150, errbuf);
 	}
 	if(!handle) {
 		log_raw("Couldn't open pcap handle: %s", errbuf);
@@ -278,5 +278,6 @@ static void callback_fwd(u_char *user, const struct pcap_pkthdr *hdr, const u_ch
 {
 	if(hdr->caplen < hdr->len) // truncated
 		return;
-	((rawsock_callback) (intptr_t) user)(hdr->ts.tv_sec, hdr->caplen, pkt);
+	uint64_t ts = hdr->ts.tv_sec * 1000000 + hdr->ts.tv_usec;
+	((rawsock_callback) (intptr_t) user)(ts, hdr->caplen, pkt);
 }

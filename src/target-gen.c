@@ -325,12 +325,15 @@ int target_gen_sanity_check(void)
 
 static void shuffle(void *_buf, int stride, int n)
 {
-	char tmp[stride], *buf = (char*) _buf;
+	char *buf = _buf;
 	for(int i = n-1; i > 0; i--) {
 		int j = rand() % (i+1);
-		memcpy(tmp, &buf[stride * j], stride);
-		memcpy(&buf[stride * j], &buf[stride * i], stride);
-		memcpy(&buf[stride * i], tmp, stride);
+		// swap element i and j
+		for (int off = 0; off < stride; off++) {
+			char x = buf[stride * i + off];
+			buf[stride * i + off] = buf[stride * j + off];
+			buf[stride * j + off] = x;
+		}
 	}
 }
 

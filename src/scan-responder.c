@@ -193,7 +193,9 @@ static void *tcp_thread(void *unused)
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	set_thread_name("tcp");
 
-	const int packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE;
+	enum {
+		packet_sz = FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE
+	};
 	uint8_t _Alignas(uint32_t) packet[packet_sz];
 	// Copy the prepared structure from the "global" packet buffer
 	memcpy(packet, responder.buffer, packet_sz);

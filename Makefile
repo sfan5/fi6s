@@ -1,7 +1,7 @@
 BUILD_TYPE ?= debug
 
 CFLAGS = -pipe -std=gnu11 -pthread
-CFLAGS += -Wall -Wextra -Wno-sign-compare -Wcast-align
+CFLAGS += -Wall -Wextra -Wno-sign-compare -Wcast-align -Werror=vla
 LDFLAGS =
 LIBS = -lpcap
 

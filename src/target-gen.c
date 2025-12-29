@@ -16,10 +16,13 @@ struct targetstate {
 	unsigned done : 1;
 };
 
+static int cmp_target(const void *a, const void *b);
+static void dump_targets(int ndump);
 static void shuffle(void *buf, int stride, int n);
 static int popcount(uint32_t x);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
+static int count_mask_bits(const struct targetstate *t);
 static void count_total(const struct targetstate *t, uint64_t *total, bool *overflowed);
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done);
 
@@ -112,20 +115,10 @@ int target_gen_add(const struct targetspec *s)
 	return 0;
 }
 
-static inline uint8_t mylog2(uint64_t val)
-{
-	uint8_t ret = 0;
-	while(val) {
-		val >>= 1;
-		ret++;
-	}
-	return ret;
-}
-
 static int cmp_target(const void *a, const void *b)
 {
 	const struct targetstate *ta = a, *tb = b;
-	return (ta->tmp < tb->tmp) - (ta->tmp > tb->tmp); // descending
+	return (ta->tmp > tb->tmp) - (ta->tmp < tb->tmp); // ascending
 }
 
 static void dump_targets(int ndump)
@@ -158,7 +151,7 @@ int target_gen_finish_add(void)
 	for(int i = 0; i < targets_i; i++) {
 		uint64_t tmp = 0, junk = 0;
 		progress_single(&targets[i], &tmp, &junk);
-		targets[i].tmp = mylog2(tmp);
+		targets[i].tmp = count_mask_bits(&targets[i]);
 		if(tmp > max)
 			max = tmp;
 	}
@@ -227,12 +220,7 @@ void target_gen_print_summary(int max_rate, int nports)
 
 		count_total(t, &total, &total_overflowed);
 
-		int maskbits = 0;
-		for(int j = 0; j < 4; j++) {
-			uint32_t v;
-			memcpy(&v, &t->spec.mask[4*j], 4);
-			maskbits += popcount(v);
-		}
+		int maskbits = count_mask_bits(t);
 		if(maskbits < largest)
 			largest = maskbits;
 		if(maskbits > smallest)
@@ -253,9 +241,15 @@ void target_gen_print_summary(int max_rate, int nports)
 		if (total_overflowed)
 			goto over;
 		assert(nports >= 1);
-		uint64_t dur64 = total * (uint64_t)nports;
+		uint64_t dur64;
+#if __has_builtin(__builtin_mul_overflow)
+		if (__builtin_mul_overflow(total, (uint64_t)nports, &dur64))
+			goto over;
+#else
+		dur64 = total * (uint64_t)nports;
 		if (dur64 < total)
 			goto over;
+#endif
 		assert(max_rate >= 1);
 		dur64 /= (uint64_t)max_rate;
 		if (dur64 > UINT32_MAX)
@@ -424,6 +418,17 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 		t->done = 1;
 }
 
+static int count_mask_bits(const struct targetstate *t)
+{
+	int b = 0;
+	for(int j = 0; j < 4; j++) {
+		uint32_t v;
+		memcpy(&v, &t->spec.mask[4*j], 4);
+		b += popcount(v);
+	}
+	return b;
+}
+
 static void count_total(const struct targetstate *t, uint64_t *total, bool *overflowed)
 {
 	uint64_t one = 0, tmp = 0;
@@ -432,11 +437,15 @@ static void count_total(const struct targetstate *t, uint64_t *total, bool *over
 	if (one == 0) {
 		*overflowed = true;
 	} else {
-		// add with overflow check
+#if __has_builtin(__builtin_add_overflow)
+		if (__builtin_add_overflow(one, *total, total))
+			*overflowed = true;
+#else
 		tmp = *total;
 		*total += one;
 		if (*total < tmp)
 			*overflowed = true;
+#endif
 	}
 }
 

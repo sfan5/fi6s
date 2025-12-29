@@ -144,7 +144,7 @@ int scan_main(const char *interface, int quiet)
 	cur_status &= ~SEND_FINISHED; // leave only error bits
 
 	// Wait for the last packets to arrive
-	fputs("", stderr);
+	fputs("\n", stderr);
 	if(!cur_status) {
 		fprintf(stderr, "Waiting %d more seconds...\n", FINISH_WAIT_TIME);
 		usleep(FINISH_WAIT_TIME * 1000 * 1000);

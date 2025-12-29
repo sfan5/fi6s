@@ -362,12 +362,8 @@ uint64_t monotonic_ms(void)
 }
 
 // UDP/TCP checksumming
-#ifdef __has_builtin
 #if __has_builtin(__builtin_assume_aligned)
 #define assume_aligned(p, n) __builtin_assume_aligned(p, n)
-#else
-#define assume_aligned(p, n) (p)
-#endif
 #else
 #define assume_aligned(p, n) (p)
 #endif

@@ -396,34 +396,46 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		rawsock_eth_settings(source_mac, router_mac);
-		rawsock_ip_settings(source_addr, ttl);
-
 		// Handle --source-port: auto-detection, reservation, errors
-		if (r == 0) {
-			const bool mandatory = banners && ip_type == IP_TYPE_TCP;
-			const bool useful = mandatory || (banners && ip_type == IP_TYPE_UDP);
+		const bool port_mandatory = banners && ip_type == IP_TYPE_TCP;
+		if (r == 0 && rawsock_islocal(source_addr) == 0) {
+			// We're using an unassigned IP, pick any random port. No need to
+			// reserve it or care about the OS.
+			if (port_mandatory && source_port == -1) {
+				source_port = 25000 + rand() % 40000;
+				log_raw("Using random source port: %d", source_port);
+			}
+		} else if (r == 0) {
+			const bool port_useful = banners && ip_type == IP_TYPE_UDP;
 			bool auto_failed = false;
 
-			if (mandatory || useful) {
+			if (port_mandatory || port_useful) {
 				int tmp = rawsock_reserve_port(source_addr, ip_type, source_port == -1 ? 0 : source_port);
 				if (tmp >= 0) {
-					log_debug("reserved source port: %d", tmp);
 					source_port = tmp;
+					if (port_mandatory)
+						log_raw("Using reserved source port: %d", source_port);
+					else
+						log_debug("Using reserved source port: %d", source_port);
 				} else {
 					auto_failed = tmp == -1;
 				}
 			}
 
 			assert(source_port != 0);
-			if (mandatory && source_port == -1) {
+			if (port_mandatory && source_port == -1) {
 				log_raw("A source port is required but was not given%s.",
 					auto_failed ? " (automatic reservation failed)" : "");
 				r = 1;
+			} else if (auto_failed) {
+				// assume the user knows what he's doing
+				log_debug("automatic port reservation failed");
 			}
 		}
 
 		if (r == 0) {
+			rawsock_eth_settings(source_mac, router_mac);
+			rawsock_ip_settings(source_addr, ttl);
 			scan_set_general(&ports, max_rate, show_closed, banners);
 			scan_set_network(source_addr, source_port, ip_type);
 			scan_set_output(outfile, outdef);

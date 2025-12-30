@@ -16,8 +16,8 @@ Building fi6s is fairly easy on any recent Linux system, e.g. on Ubuntu:
 
 The scanner executable will be ready at `./fi6s`.
 
-Note that fi6s is developed and tested solely on Linux. It *should* work on other
-UNIX-like platforms, but don't expect it to run on Windows.
+Note that fi6s is developed and tested solely on Linux. Other UNIX-like platforms
+*should* work, but not Windows.
 
 ## Usage
 
@@ -66,7 +66,7 @@ It would typically send RST frames in this case.
 By default fi6s will ask the OS to reserve an ephemeral port and use it for the
 duration of the scan. This only works on Linux.
 
-If this doesn't work or you are on a different platform you will have to use a static
+*If this doesn't work* or you are on a different platform you will have to set a
 source port and configure your firewall to drop traffic on this port, e.g.:
 
 	# ip6tables -A INPUT -p tcp -m tcp --dport 12345 -j DROP
@@ -102,4 +102,5 @@ This means fi6s may not perform as expected or outright not work if:
 * your network has consistent packet loss
 
 For banner collection note that fi6s does not come with anything resembling a real TCP
-stack. It merely supports sending one query and reading response data that follows. Resends are not implemented.
+stack. It merely supports sending one query and reading response data that follows.
+Resends or window logic are not implemented.

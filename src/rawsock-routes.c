@@ -44,7 +44,7 @@ int rawsock_getdev(char **out_dev)
 		if(!(d->flags & PCAP_IF_UP))
 			continue;
 		for(pcap_addr_t *a = d->addresses; a; a = a->next) {
-			if(((struct sockaddr*)a->addr)->sa_family != AF_INET6)
+			if(a->addr->sa_family != AF_INET6)
 				continue;
 			struct sockaddr_in6 *inaddr = (struct sockaddr_in6*) a->addr;
 			// Exclude link-local fe80::
@@ -298,6 +298,36 @@ afnosupport:
 			log_warning("Your machine does not seem to have working IPv6");
 	}
 	close(sock);
+	return ret;
+}
+
+int rawsock_islocal(const uint8_t *ip)
+{
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_if_t *alldevs, *d;
+
+	if(pcap_findalldevs(&alldevs, errbuf) != 0) {
+		log_debug("pcap_findalldevs: %s", errbuf);
+		return -1;
+	}
+
+	int ret = 0;
+	for(d = alldevs; d; d = d->next) {
+		if(!(d->flags & PCAP_IF_UP))
+			continue;
+		for(pcap_addr_t *a = d->addresses; a; a = a->next) {
+			if(a->addr->sa_family != AF_INET6)
+				continue;
+			struct sockaddr_in6 *inaddr = (struct sockaddr_in6*) a->addr;
+			if(!memcmp(inaddr->sin6_addr.s6_addr, ip, 16)) {
+				ret = 1;
+				goto found;
+			}
+		}
+	}
+
+found:
+	pcap_freealldevs(alldevs);
 	return ret;
 }
 

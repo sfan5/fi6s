@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h> // usleep()
 #include <limits.h>
+#include <assert.h>
 #include <stdatomic.h>
 #include <pthread.h>
 
@@ -53,6 +54,12 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 #if ATOMIC_INT_LOCK_FREE != 2
 #warning Non lock-free atomic types will severely affect performance.
 #endif
+
+#define RATE_CONTROL() do { \
+	if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) { \
+		do usleep(1000); while(atomic_load(&pkts_sent) != 0); \
+	} \
+	} while(0)
 
 /****/
 
@@ -126,14 +133,21 @@ int scan_main(const char *interface, int quiet)
 	unsigned char cur_status = 0;
 	while(1) {
 		unsigned int cur_sent, cur_recv;
+		// (used for rate control)
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
 		if(!quiet) {
 			float progress = target_gen_progress();
-			if(progress < 0.0f)
-				fprintf(stderr, "snt:%5u rcv:%5u p:???%% \r", cur_sent, cur_recv);
-			else
-				fprintf(stderr, "snt:%5u rcv:%5u p:%3d%% \r", cur_sent, cur_recv, (int) (progress*100));
+			unsigned int tcp_sent = 0;
+			char tmp[10] = {'?', '?', '?', 0};
+			if(progress >= 0.0f)
+				snprintf(tmp, sizeof(tmp), "%3d", (int) (progress*100));
+			if(banners && ip_type == IP_TYPE_TCP) {
+				scan_responder_stats(&tcp_sent);
+				fprintf(stderr, "snt:%5u rcv:%5u tcp:%5u p:%s%% \r", cur_sent, cur_recv, tcp_sent, tmp);
+			} else {
+				fprintf(stderr, "snt:%5u rcv:%5u p:%s%% \r", cur_sent, cur_recv, tmp);
+			}
 		}
 		cur_status = atomic_load(&status_bits);
 		if(cur_status)
@@ -146,6 +160,7 @@ int scan_main(const char *interface, int quiet)
 	// Wait for the last packets to arrive
 	fputs("\n", stderr);
 	if(!cur_status) {
+		static_assert(FINISH_WAIT_TIME * 1000 > BANNER_TIMEOUT, "");
 		fprintf(stderr, "Waiting %d more seconds...\n", FINISH_WAIT_TIME);
 		usleep(FINISH_WAIT_TIME * 1000 * 1000);
 	} else {
@@ -155,8 +170,16 @@ int scan_main(const char *interface, int quiet)
 	rawsock_breakloop();
 	if(banners && ip_type == IP_TYPE_TCP)
 		scan_responder_finish();
-	if(!quiet && !cur_status)
-		fprintf(stderr, "rcv:%5u\n", atomic_exchange(&pkts_recv, 0));
+	if(!quiet && !cur_status) {
+		unsigned int cur_recv = atomic_exchange(&pkts_recv, 0);
+		unsigned int tcp_sent = 0;
+		if(banners && ip_type == IP_TYPE_TCP) {
+			scan_responder_stats(&tcp_sent);
+			fprintf(stderr, "rcv:%5u tcp:%5u\n", cur_recv, tcp_sent);
+		} else {
+			fprintf(stderr, "rcv:%5u\n", cur_recv);
+		}
+	}
 
 	// Write output file footer
 	outdef.end(outfile);
@@ -205,12 +228,7 @@ static void *send_thread_tcp(void *unused)
 		tcp_checksum(IP_FRAME(packet), TCP_HEADER(packet), 0);
 		rawsock_send(packet, sizeof(packet));
 
-		// Rate control
-		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
-			do
-				usleep(1000);
-			while(atomic_load(&pkts_sent) != 0);
-		}
+		RATE_CONTROL();
 	}
 
 	atomic_fetch_or(&status_bits, SEND_FINISHED);
@@ -265,12 +283,7 @@ static void *send_thread_udp(void *unused)
 		udp_checksum(IP_FRAME(packet), UDP_HEADER(packet), dlen);
 		rawsock_send(packet, FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + dlen);
 
-		// Rate control
-		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
-			do
-				usleep(1000);
-			while(atomic_load(&pkts_sent) != 0);
-		}
+		RATE_CONTROL();
 	}
 
 	atomic_fetch_or(&status_bits, SEND_FINISHED);
@@ -302,12 +315,7 @@ static void *send_thread_icmp(void *unused)
 		icmp_checksum(IP_FRAME(packet), ICMP_HEADER(packet), 0);
 		rawsock_send(packet, sizeof(packet));
 
-		// Rate control
-		if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) {
-			do
-				usleep(1000);
-			while(atomic_load(&pkts_sent) != 0);
-		}
+		RATE_CONTROL();
 
 		// Next target
 		if(target_gen_next(dstaddr) < 0)

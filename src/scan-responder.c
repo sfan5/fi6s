@@ -29,6 +29,7 @@ static struct {
 
 	pthread_t tcp_thread;
 	atomic_bool tcp_thread_exit;
+	atomic_uint pkts_sent;
 } responder;
 
 static void *tcp_thread(void *unused);
@@ -50,6 +51,7 @@ int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t 
 		return -1;
 
 	atomic_store(&responder.tcp_thread_exit, false);
+	atomic_store(&responder.pkts_sent, 0);
 	if(pthread_create(&responder.tcp_thread, NULL, tcp_thread, NULL) < 0)
 		return -1;
 
@@ -61,6 +63,13 @@ int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t 
 #else
 #define tcp_debug(...) do {} while(0)
 #endif
+
+// plen: bytes after TCP header
+#define SEND_PKT(packet_, plen) do { \
+	tcp_checksum(IP_FRAME(packet_), TCP_HEADER(packet_), plen); \
+	rawsock_send(packet_, TCP_SZ + plen); \
+	atomic_fetch_add(&responder.pkts_sent, 1); \
+	} while(0)
 
 void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 {
@@ -103,8 +112,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 		tcp_debug("> ack%s seq=%08x ack=%08x",
 			TCP_HEADER(spacket)->f_fin?"+fin":"", lseqnum, rseqnum + plen + x);
-		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
-		rawsock_send(spacket, TCP_SZ);
+		SEND_PKT(spacket, 0);
 	// FIN packet (no data)
 	} else if(TCP_HEADER(rpacket)->f_fin) {
 		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, NULL);
@@ -127,8 +135,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 
 		tcp_debug("> ack+fin seq=%08x ack=%08x",
 			lseqnum, rseqnum + x);
-		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
-		rawsock_send(spacket, TCP_SZ);
+		SEND_PKT(spacket, 0);
 	// ACK packet (no data)
 	} else if(TCP_HEADER(rpacket)->f_ack) {
 		tcp_decode2(TCP_HEADER(rpacket), &rseqnum, &acknum);
@@ -153,8 +160,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 			TCP_HEADER(spacket)->f_rst = 1;
 			tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
-			tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
-			rawsock_send(spacket, TCP_SZ);
+			SEND_PKT(spacket, 0);
 			tcp_debug("> ack+rst seq=%08x ack=%08x", lseqnum, rseqnum);
 			return;
 		}
@@ -166,8 +172,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 		memcpy(TCP_DATA(spacket, TCP_HEADER_SIZE), payload, plen);
 
-		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), plen);
-		rawsock_send(spacket, TCP_SZ + plen);
+		SEND_PKT(spacket, plen);
 		tcp_debug("> ack%s seq=%08x ack=%08x",
 			TCP_HEADER(spacket)->f_psh?"+psh":"", lseqnum, rseqnum);
 
@@ -188,8 +193,7 @@ void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket)
 		TCP_HEADER(spacket)->f_rst = 1;
 		tcp_modify(TCP_HEADER(spacket), responder.source_port, rport);
 
-		tcp_checksum(IP_FRAME(spacket), TCP_HEADER(spacket), 0);
-		rawsock_send(spacket, TCP_SZ);
+		SEND_PKT(spacket, 0);
 		tcp_debug("> ack+rst seq=%08x ack=%08x", lseqnum, rseqnum);
 	} else {
 		tcp_debug("want to send rst but can't..."); // because we don't know our local seqnum
@@ -235,8 +239,7 @@ static void *tcp_thread(void *unused)
 				tcp_make_rst(TCP_HEADER(packet), lseqnum);
 				tcp_modify(TCP_HEADER(packet), responder.source_port, srcport);
 
-				tcp_checksum(IP_FRAME(packet), TCP_HEADER(packet), 0);
-				rawsock_send(packet, TCP_SZ);
+				SEND_PKT(packet, 0);
 				tcp_debug("> rst seq=%08x", lseqnum);
 			}
 
@@ -245,6 +248,11 @@ static void *tcp_thread(void *unused)
 		}
 	} while(!atomic_load(&responder.tcp_thread_exit));
 	return NULL;
+}
+
+void scan_responder_stats(unsigned int *pkts_sent)
+{
+	*pkts_sent = atomic_exchange(&responder.pkts_sent, 0);
 }
 
 void scan_responder_finish()

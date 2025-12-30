@@ -502,28 +502,43 @@ static void usage(void)
 			printf("%s\n", lines[i].l);
 	}
 	printf("\n");
-	printf("Target specification:\n");
-	printf("  A target specification is essentially just a network address and mask.\n");
-	printf("  They come in three shapes:\n");
-	printf("    2001:db8::/64 (classic subnet notation)\n");
-	printf("      This one should be obvious, you can even omit the number (it defaults to 128).\n");
-	printf("    2001:db8::1/32-48 (subnet range notation)\n");
-	printf("      The resulting netmask is ffff:ffff:0000:ffff:ffff:ffff:ffff:ffff.\n");
-	printf("      It refers to addresses 2001:db8:0::1, 2001:db8:1::1 ... 2001:db8:ffff::1\n");
-	printf("    2001:db8::x (wildcard nibble notation)\n");
-	printf("      The resulting netmask is ::000f.\n");
-	printf("      It refers to addresses 2001:db8::0, 2001:db8::1 ... 2001:db8::f\n");
-	printf("  Only one target specification can be specified on the command line,\n");
-	printf("  if you want to scan multiple targets pass @/path/to/list_of_targets.txt to fi6s.\n");
-	printf("\n");
-	printf("The \"binary\" output format:\n");
-	printf("  When saving as binary output, banners will not be decoded during scanning and are saved verbatim.\n");
-	printf("  Binary scan files can be read again afterwards and converted to any desired output format.\n");
-	printf("  When reading binary scans, the --banners and --show-closed options are also applied\n");
-	printf("  and can be used to select which data is shown.\n");
-	printf("  For example, you could perform a scan that captures banners but only extract open/closed ports:\n");
-	printf("    $ fi6s -o scan.bin --output-format binary -b 2001:db8::xx\n");
-	printf("    $ fi6s --readscan scan.bin --show-closed\n");
+	const char *lines2[] = {
+		"Target specification:",
+		"  A target specification is essentially just a network address and mask.",
+		"  They come in three shapes:",
+		"    2001:db8::/64 (classic subnet notation)",
+		"      This one should be obvious, you can even omit the number (it defaults to 128).",
+		"    2001:db8::1/32-48 (subnet range notation)",
+		"      The resulting netmask is ffff:ffff:0000:ffff:ffff:ffff:ffff:ffff.",
+		"      It refers to addresses 2001:db8:0::1, 2001:db8:1::1 ... 2001:db8:ffff::1",
+		"    2001:db8::x (wildcard nibble notation)",
+		"      The resulting netmask is ::000f.",
+		"      It refers to addresses 2001:db8::0, 2001:db8::1 ... 2001:db8::f",
+		"  Only one target specification can be specified on the command line,",
+		"  if you want to scan multiple targets pass @/path/to/list_of_targets.txt to fi6s.",
+		"",
+		"The \"binary\" output format:",
+		"  When saving as binary output, banners will not be decoded during scanning and are saved verbatim.",
+		"  Binary scan files can be read again afterwards and converted to any desired output format.",
+		"  When reading binary scans, the --banners and --show-closed options are also applied",
+		"  and can be used to select which data is shown.",
+		"  For example, you could perform a scan that captures banners but only extract open/closed ports:",
+		"    $ fi6s -o scan.bin --output-format binary -b 2001:db8::xx",
+		"    $ fi6s --readscan scan.bin --show-closed",
+		"",
+		"Scan status message:",
+		"  Unless this is disabled, fi6s will output a periodic status message during scanning,",
+		"  as well as once at the end.",
+		"  The following parts can appear:",
+		"    'snt': number of packets sent.",
+		"    'rcv': number of packets received. these are not necessarily all related to the current scan.",
+		"    'tcp': number of packets sent for TCP conversations (banners). this is separate from 'snt' and not affected by --max-rate.",
+		"    'p': scan progress in percent.",
+		NULL
+	};
+	for(int i = 0; lines2[i] != NULL; i++) {
+		printf("%s\n", lines2[i]);
+	}
 #ifndef NDEBUG
 	printf("\n");
 	printf("(debug build)\n");

@@ -29,8 +29,9 @@ int binary_read_header(struct reader *r, FILE *f)
 	skip_align(f, sizeof(h));
 
 	if(h.magic != FILE_MAGIC) {
+		log_error("File header not found or incorrect.");
 		if(h.magic == bswap(FILE_MAGIC))
-			log_error("This file was created on a system of differing endianness, reading it is not (yet) supported.");
+			log_raw("This file was created on a system of differing endianness, reading it is not (yet) supported.");
 		return -1;
 	}
 	if(h.version != 1) {

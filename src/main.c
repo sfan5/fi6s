@@ -19,6 +19,7 @@
 static int read_targets_from_file(const char *filename, int stream_targets);
 static void usage(void);
 static inline bool is_all_ff(const uint8_t *buf, int len);
+static inline char *find_dot(char *str);
 
 enum operating_mode {
 	M_SCAN, M_PRINT_HOSTS,
@@ -75,7 +76,7 @@ int main(int argc, char *argv[])
 	ip_type = IP_TYPE_TCP;
 	interface = NULL; // automatically picked
 	outfile = stdout;
-	outdef = &output_list;
+	outdef = NULL;
 
 	srand(time(NULL) ^ getpid());
 	memset(source_mac, 0xff, 6);
@@ -208,6 +209,18 @@ int main(int argc, char *argv[])
 					perror("open output file");
 					return 1;
 				}
+				char *dot = find_dot(optarg);
+				if(!outdef && dot) {
+					const char *suggest = NULL;
+					if(!strcmp(dot+1, "bin"))
+						suggest = "binary";
+					else if(!strcmp(dot+1, "json"))
+						suggest = "json";
+					if(suggest) {
+						log_warning("It looks like you might want a different "
+							"output format, try --output-format %s.", suggest);
+					}
+				}
 				outfile = f;
 				break;
 			}
@@ -225,6 +238,9 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
+
+	if(!outdef)
+		outdef = &output_list;
 
 	int max_args = 1;
 	if(mode == M_READSCAN) {
@@ -552,4 +568,16 @@ static inline bool is_all_ff(const uint8_t *buf, int len)
 			return false;
 	}
 	return true;
+}
+
+static inline char *find_dot(char *str)
+{
+	char *p = str + strlen(str);
+	do {
+		if(*p == '/')
+			break;
+		if(*p == '.')
+			return p;
+	} while((p--) > str);
+	return NULL;
 }

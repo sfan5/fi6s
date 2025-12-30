@@ -86,7 +86,7 @@ int scan_main(const char *interface, int quiet)
 	atomic_store(&pkts_recv, 0);
 	atomic_store(&status_bits, 0);
 	if(banners && ip_type == IP_TYPE_TCP) {
-		if(scan_responder_init(outfile, &outdef, source_port) < 0)
+		if(scan_responder_init(outfile, &outdef, source_port, scan_randomness) < 0)
 			goto err;
 	}
 	if(!banners && ip_type == IP_TYPE_UDP)
@@ -188,7 +188,7 @@ static void *send_thread_tcp(void *unused)
 		goto err;
 	rawsock_ip_modify(IP_FRAME(packet), TCP_HEADER_SIZE, dstaddr);
 	tcp_prepare(TCP_HEADER(packet));
-	tcp_make_syn(TCP_HEADER(packet), FIRST_SEQNUM);
+	tcp_make_syn(TCP_HEADER(packet), tcp_first_seqnum(scan_randomness));
 	ports_iter_begin(&ports, &it);
 
 	while(1) {

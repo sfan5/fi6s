@@ -11,8 +11,6 @@ struct ports;
 #define FINISH_WAIT_TIME 5    // s
 #define BANNER_TIMEOUT   2500 // ms
 
-#define FIRST_SEQNUM 0xf0000000
-
 void scan_set_general(const struct ports *ports, int max_rate, int show_closed, int banners);
 void scan_set_network(const uint8_t *source_addr, int source_port, uint8_t ip_type);
 void scan_set_output(FILE *outfile, const struct outputdef *outdef);
@@ -32,7 +30,7 @@ int scan_reader_main(FILE *infile);
 #define TCP_DATA(buf, data_offset) ( (uint8_t*) &(buf)[FRAME_ETH_SIZE + FRAME_IP_SIZE + data_offset] )
 #define UDP_DATA(buf) TCP_DATA(buf, UDP_HEADER_SIZE)
 
-int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t source_port);
+int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t source_port, uint32_t scan_randomness);
 void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket);
 void scan_responder_finish();
 

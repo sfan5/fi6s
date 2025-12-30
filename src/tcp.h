@@ -42,6 +42,11 @@ void tcp_decode_header(const struct tcp_header *pkt, unsigned int *data_offset);
 void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport);
 void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknum);
 
+static inline uint32_t tcp_first_seqnum(uint32_t rnd) {
+	rnd &= ~(1 << 15); // make room to avoid overflow
+	return rnd;
+}
+
 
 int tcp_state_init(void);
 void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport,

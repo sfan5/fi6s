@@ -21,12 +21,12 @@ RECORD_ALIGN = 8
 #	// banner data follows here
 # }
 
-def skip_align(f, read):
+def skip_align(f, read: int):
 	have = read % RECORD_ALIGN
 	if have > 0:
 		f.read(RECORD_ALIGN - have)
 
-def readpacked(f, fmt, align=False):
+def readpacked(f, fmt: str, align=False) -> tuple:
 	n = struct.calcsize(fmt)
 	data = f.read(n)
 	if not data:
@@ -56,7 +56,7 @@ def reader(fi, proto, port):
 		if data[2] != port or (data[4] >> 4) != proto:
 			continue
 
-		hhh = md5(buf).digest()[8:]
+		hhh = md5(buf).digest()[:8]
 		if hhh in seen:
 			continue
 		seen.add(hhh)
@@ -65,7 +65,7 @@ def reader(fi, proto, port):
 		with open("sample/%04d.bin" % n, "wb") as fo:
 			fo.write(buf)
 	return n
-	
+
 def main(args):
 	with open(args[0], "rb") as fi:
 		hmagic, hver = readpacked(fi, "<LH", True)

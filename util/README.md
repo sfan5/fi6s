@@ -12,3 +12,7 @@ Timestamps are available however.
 **`ci-test.sh` et al**:
 
 Integration tests for CI
+
+**`make-banner-query.py`**:
+
+Helper for development use only

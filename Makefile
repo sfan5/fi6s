@@ -10,7 +10,11 @@ CFLAGS += -O1 -ggdb
 #CFLAGS += -fsanitize=type
 else
 ifeq ($(BUILD_TYPE),release)
-CFLAGS += -O3 -g -DNDEBUG -flto
+CFLAGS += -O3 -g -DNDEBUG
+ifeq ($(FUZZ),)
+CFLAGS += -flto
+LDFLAGS += -flto
+endif
 else
 $(error BUILD_TYPE must be one of release or debug)
 endif
@@ -28,7 +32,7 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
 SRC = \
-	main.c util.c \
+	util.c \
 	scan.c scan-responder.c scan-reader.c \
 	target-parse.c target-gen.c \
 	rawsock-pcap.c rawsock-frame.c rawsock-routes.c \
@@ -36,6 +40,12 @@ SRC = \
 	tcp.c tcp-state.c udp.c icmp.c \
 	banner.c \
 	binary-write.c binary-read.c
+ifeq ($(FUZZ),)
+SRC += main.c
+else
+SRC += fuzz-$(FUZZ).c
+endif
+
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
 
 all: fi6s

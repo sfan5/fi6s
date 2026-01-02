@@ -336,6 +336,7 @@ int main(int argc, char *argv[])
 			nports = 1;
 		}
 		target_gen_print_summary(max_rate, nports);
+		scan_print_summary(&ports, max_rate, banners, ip_type);
 
 		r = 0;
 	} else if(mode == M_PRINT_NETWORK) {

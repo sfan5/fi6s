@@ -193,6 +193,75 @@ err:
 	goto ret;
 }
 
+static bool calc_bps(char *dst, unsigned int dstsize, uint64_t m1, uint64_t m2)
+{
+	uint64_t bps;
+#if __has_builtin(__builtin_mul_overflow)
+	if(__builtin_mul_overflow(m1, m2, &bps))
+		return false;
+#else
+	bps = m1 * m2;
+	if(bps < m1 || bps < m2)
+		return false;
+#endif
+	uint32_t mbit = bps >> 17; // == bps * 8 / 1024 / 1024
+	if(mbit > 1024) {
+		snprintf(dst, dstsize, "%.1f Gbit/s", mbit / 1024.0f);
+	} else {
+		snprintf(dst, dstsize, "%d Mbit/s", (int)mbit);
+	}
+	return true;
+}
+
+void scan_print_summary(const struct ports *ports, int max_rate, int banners, uint8_t ip_type)
+{
+	unsigned int payload_min = 9999, payload_max = 0;
+	if(ip_type == IP_TYPE_TCP) {
+		payload_min = payload_max = TCP_HEADER_SIZE;
+	} else if(ip_type == IP_TYPE_UDP && !banners) {
+		payload_min = payload_max = UDP_HEADER_SIZE;
+	} else if(ip_type == IP_TYPE_UDP) {
+		// Need to know actual ports to know payload size
+		if(!validate_ports(ports))
+			return;
+		struct ports_iter it;
+		ports_iter_begin(ports, &it);
+		while(ports_iter_next(&it) == 1) {
+			unsigned int len = 0;
+			banner_get_query(IP_TYPE_UDP, it.val, &len);
+			len += UDP_HEADER_SIZE;
+			if(len < payload_min)
+				payload_min = len;
+			if(len > payload_max)
+				payload_max = len;
+		}
+	} else if(ip_type == IP_TYPE_ICMPV6) {
+		payload_min = payload_max = ICMP_HEADER_SIZE;
+	}
+	payload_min += FRAME_ETH_SIZE + FRAME_IP_SIZE;
+	payload_max += FRAME_ETH_SIZE + FRAME_IP_SIZE;
+
+	if(payload_min == payload_max) {
+		printf("Scanning will send packets with %u octets (incl. Ethernet and IP headers).\n",
+			payload_min);
+	} else {
+		printf("Scanning will send packets with %u to %u octets (incl. Ethernet and IP headers).\n",
+			payload_min, payload_max);
+	}
+
+	if(max_rate == -1)
+		return;
+
+	char buf[20] = {0}, buf2[20] = {0};
+	calc_bps(buf, sizeof(buf), payload_min, max_rate);
+	if(payload_min == payload_max) {
+		printf("The scan is expected to use %s of bandwidth.\n", buf);
+	} else {
+		calc_bps(buf2, sizeof(buf2), payload_max, max_rate);
+		printf("The scan is expected to use %s to %s of bandwidth.\n", buf, buf2);
+	}
+}
+
 /****/
 
 static void *send_thread_tcp(void *unused)

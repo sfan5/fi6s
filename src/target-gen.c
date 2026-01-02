@@ -216,7 +216,6 @@ int target_gen_next(uint8_t *dst)
 void target_gen_print_summary(int max_rate, int nports)
 {
 	if(mode_streaming) {
-		printf("???\n");
 		return;
 	}
 

@@ -101,7 +101,7 @@ int ports_iter_next(struct ports_iter *it)
 	if(it->val > it->__p->r[it->__ri].end)
 		goto next_range;
 	return 1;
-	next_range:
+next_range:
 	it->__ri++;
 	if(it->__ri >= PORTS_MAX_RANGES ||
 		it->__p->r[it->__ri].begin > it->__p->r[it->__ri].end) // check if next range is valid

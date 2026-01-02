@@ -47,6 +47,16 @@ check_out "covering 65536 addr"
 
 ##
 
+try --print-summary 1010::/99
+check_out "packets with 74 octet"
+
+##
+
+try --print-summary --max-rate 88888888 --icmp 1010::/99
+check_out "expected to use 41\.[0-9] Gbit"
+
+##
+
 try --icmp 3ffe::/48
 check_out "tremendous amount of time"
 

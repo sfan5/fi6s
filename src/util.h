@@ -29,7 +29,7 @@ struct ports_iter {
 void init_ports(struct ports *p); // initialized as "invalid"
 bool validate_ports(const struct ports *p); // just checks whether the struct contains anything
 int parse_ports(const char *str, struct ports *dst); // parses list of ports into ports struct
-void ports_iter_begin(const struct ports *p, struct ports_iter *it); // begins iterating on a list of ports, only does reset if p == NULL
+void ports_iter_begin(const struct ports *p, struct ports_iter *it); // begins iterating on a list of ports; pass p == NULL to only reset
 int ports_iter_next(struct ports_iter *it); // gets next port value, has to be called initially; returns 0 if there's no more ports 1 otherwise
 
 // Various utilities

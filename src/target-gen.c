@@ -299,6 +299,7 @@ over:
 
 int target_gen_sanity_check(void)
 {
+	/* Target size check */
 	uint64_t total = 0;
 	bool overflowed = false;
 	for(int i = 0; i < targets_i; i++) {
@@ -328,6 +329,27 @@ int target_gen_sanity_check(void)
 		);
 		return -1;
 	}
+
+	/* Target address check */
+	bool have_ll = false, have_mc = false;
+	for(int i = 0; i < targets_i; i++) {
+		const struct targetspec *s = &targets[i].spec;
+		if(s->mask[0] == 0xff && s->mask[1] == 0xff) {
+			have_ll |= s->addr[0] == 0xfe && s->addr[1] >= 0x80 && s->addr[1] <= 0xbf;
+		}
+		if(s->mask[0] == 0xff) {
+			have_mc |= s->addr[0] == 0xff;
+		}
+	}
+	if(have_ll) {
+		log_warning("Some of your targets are link-local IPv6 addresses. "
+			"Scanning them will not work.");
+	}
+	if(have_mc) {
+		log_warning("Some of your targets are multicast IPv6 addresses. "
+			"Scanning them will not work.");
+	}
+
 	return 0;
 }
 

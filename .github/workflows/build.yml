@@ -30,17 +30,16 @@ jobs:
         env:
           CC: gcc
 
-      - name: Test
+      - name: Tests
         run: |
           ./util/ci-test.sh
+          ./util/ci-test4.sh
 
-      - name: Test 2
+      - name: Tests 2
         run: |
           sudo ./util/ci-test2.sh
-
-      - name: Test 3
-        run: |
           sudo ./util/ci-test3.sh
+
 
   clang:
     name: "clang (sanitize: ${{ matrix.c.san }})"
@@ -65,14 +64,12 @@ jobs:
         env:
           CC: clang
 
-      - name: Test
+      - name: Tests
         run: |
           ./util/ci-test.sh
+          ./util/ci-test4.sh
 
-      - name: Test 2
+      - name: Tests 2
         run: |
           sudo ./util/ci-test2.sh
-
-      - name: Test 3
-        run: |
           sudo ./util/ci-test3.sh

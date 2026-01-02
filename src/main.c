@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 	outfile = stdout;
 	outdef = NULL;
 
-	srand(time(NULL) ^ getpid());
+	srand(time(NULL) - (getpid() * argc) + monotonic_ms());
 	memset(source_mac, 0xff, 6);
 	memset(router_mac, 0xff, 6);
 	memset(source_addr, 0xff, 16);

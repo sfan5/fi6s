@@ -7,6 +7,11 @@
 #include "output.h"
 #include "util.h"
 
+// for convenience
+#ifndef u_int
+typedef unsigned int u_int;
+#endif
+
 struct m_entry {
 	const char *name;
 	uint16_t port[4];
@@ -86,7 +91,7 @@ void banner_print_service_types()
 		printf("    %d", c->port[0]);
 		for(int i = 1; i < 4 && c->port[i] != 0; i++)
 			printf(",%d", c->port[i]);
-		unsigned int len = 0;
+		u_int len = 0;
 		banner_get_query(IP_TYPE_UDP, c->port[0], &len);
 		printf(" %s (%d bytes payload)\n", c->name, len);
 
@@ -108,10 +113,10 @@ uint8_t banner_outproto2ip_type(int output_proto)
 
 /****/
 
-static const char *get_query_tcp(int port, unsigned int *len);
-static const char *get_query_udp(int port, unsigned int *len);
+static const char *get_query_tcp(int port, u_int *len);
+static const char *get_query_udp(int port, u_int *len);
 
-const char *banner_get_query(uint8_t ip_type, int port, unsigned int *len)
+const char *banner_get_query(uint8_t ip_type, int port, u_int *len)
 {
 	static const char dns[] =
 		"\x00\x1e" // Length field (TCP only)
@@ -135,7 +140,7 @@ const char *banner_get_query(uint8_t ip_type, int port, unsigned int *len)
 		return get_query_udp(port, len);
 }
 
-static const char *get_query_tcp(int port, unsigned int *len)
+static const char *get_query_tcp(int port, u_int *len)
 {
 	static const char ftp[] =
 		"HELP\r\n"
@@ -212,7 +217,7 @@ static const char *get_query_tcp(int port, unsigned int *len)
 	}
 }
 
-static const char *get_query_udp(int port, unsigned int *len)
+static const char *get_query_udp(int port, u_int *len)
 {
 	static const char ike[] =
 		"\x00\x00\x00\x00" // prefix (4500 only)
@@ -329,20 +334,22 @@ static const char *get_query_udp(int port, unsigned int *len)
 
 /****/
 
-void postprocess_tcp(int port, uchar *banner, unsigned int *len);
-void postprocess_udp(int port, uchar *banner, unsigned int *len);
+void postprocess_tcp(int port, uchar *banner, u_int *len);
+void postprocess_udp(int port, uchar *banner, u_int *len);
 
 // protocols:
-static int dns_process(int off, uchar *banner, unsigned int *len);
-static int mdns_process(uchar *banner, unsigned int *len);
-static int ikev2_process(int off, uchar *banner, unsigned int *len);
-static int snmp_process(uchar *banner, unsigned int *len);
-static int pptp_process(uchar *banner, unsigned int *len);
-static int mysql_process(uchar *banner, unsigned int *len);
-static int ntp_process(uchar *banner, unsigned int *len);
+static int dns_process(u_int off, uchar *banner, u_int *len);
+static int mdns_process(uchar *banner, u_int *len);
+static int ikev2_process(u_int off, uchar *banner, u_int *len);
+static int snmp_process(uchar *banner, u_int *len);
+static int pptp_process(uchar *banner, u_int *len);
+static int mysql_process(uchar *banner, u_int *len);
+static int ntp_process(uchar *banner, u_int *len);
 
-void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
+void banner_postprocess(uint8_t ip_type, int port, char *_banner, u_int *len)
 {
+	static_assert(sizeof(u_int) == sizeof(unsigned int), "type mismatch???");
+
 	uchar *banner = (uchar*) _banner;
 	switch(port) {
 		case 53: {
@@ -359,7 +366,7 @@ void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *
 		postprocess_udp(port, banner, len);
 }
 
-void postprocess_tcp(int port, uchar *banner, unsigned int *len)
+void postprocess_tcp(int port, uchar *banner, u_int *len)
 {
 	switch(port) {
 		case 22: {
@@ -404,7 +411,7 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 	}
 }
 
-void postprocess_udp(int port, uchar *banner, unsigned int *len)
+void postprocess_udp(int port, uchar *banner, u_int *len)
 {
 	switch(port) {
 		case 123: {
@@ -444,12 +451,13 @@ void postprocess_udp(int port, uchar *banner, unsigned int *len)
 /** DNS and mDNS **/
 // https://tools.ietf.org/html/rfc1035
 
-#define MDNS_TEXT_BUFFER_SIZE 512 // must be <= BANNER_MAX_LENGTH
+#define MDNS_TEXT_BUFFER_SIZE 512
 #define ERR_IF(expr) \
 	if(expr) { return -1; }
-static int dns_skip_labels(int *_off, const uchar *banner, unsigned int len)
+
+static int dns_skip_labels(u_int *_off, const uchar *banner, u_int len)
 {
-	int off = *_off;
+	u_int off = *_off;
 	while(off < len) {
 		uchar c = banner[off];
 		if((c & 0xc0) == 0xc0) { /* message compression */
@@ -467,7 +475,7 @@ static int dns_skip_labels(int *_off, const uchar *banner, unsigned int len)
 	return 0;
 }
 
-static int dns_copy_labels(int off, const uchar *banner, unsigned int len, struct obuf *to)
+static int dns_copy_labels(u_int off, const uchar *banner, u_int len, struct obuf *to)
 {
 	while(off < len) {
 		uchar c = banner[off];
@@ -489,12 +497,13 @@ static int dns_copy_labels(int off, const uchar *banner, unsigned int len, struc
 	return 0;
 }
 
-static int dns_process_header(int *_off, uchar *banner, unsigned int *len)
+static int dns_process_header(u_int *_off, uchar *banner, u_int *len)
 {
-	int off = *_off;
+	const u_int inlen = *len;
+	u_int off = *_off;
 	int r;
 
-	ERR_IF(off + 12 > *len)
+	ERR_IF(off + 12 > inlen)
 	uint16_t flags = (banner[off+2] << 8) | banner[off+3];
 	uint8_t rcode = (flags & 0xf);
 	if((flags & 0x8000) != 0x8000 || rcode != 0x0) {
@@ -516,17 +525,18 @@ static int dns_process_header(int *_off, uchar *banner, unsigned int *len)
 	off += 12;
 
 	// skip query
-	r = dns_skip_labels(&off, banner, *len);
+	r = dns_skip_labels(&off, banner, inlen);
 	ERR_IF(r == -1)
 	off += 4;
-	ERR_IF(off > *len)
+	ERR_IF(off > inlen)
 
 	*_off = off;
 	return 0;
 }
 
-static int dns_process(int off, uchar *banner, unsigned int *len)
+static int dns_process(u_int off, uchar *banner, u_int *len)
 {
+	const u_int inlen = *len;
 	int r;
 
 	r = dns_process_header(&off, banner, len);
@@ -535,15 +545,15 @@ static int dns_process(int off, uchar *banner, unsigned int *len)
 	ERR_IF(r == -1)
 
 	// parse answer record
-	r = dns_skip_labels(&off, banner, *len);
+	r = dns_skip_labels(&off, banner, inlen);
 	ERR_IF(r == -1)
-	ERR_IF(off + 10 > *len)
+	ERR_IF(off + 10 > inlen)
 	uint16_t rr_type = (banner[off] << 8) | banner[off+1];
 	uint16_t rr_rdlength = (banner[off+8] << 8) | banner[off+9];
 	ERR_IF(rr_type != 0x0010 /* TXT */)
 	ERR_IF(rr_rdlength < 2)
 	off += 10;
-	ERR_IF(off + rr_rdlength > *len)
+	ERR_IF(off + rr_rdlength > inlen)
 
 	// return just the TXT record contents
 	memmove(banner, &banner[off+1], rr_rdlength - 1);
@@ -551,22 +561,25 @@ static int dns_process(int off, uchar *banner, unsigned int *len)
 	return 0;
 }
 
-static int mdns_process(uchar *banner, unsigned int *len)
+static int mdns_process(uchar *banner, u_int *len)
 {
-	int off = 0;
-	int r;
 	DECLARE_OBUF_STACK(extra, MDNS_TEXT_BUFFER_SIZE) // temporary buffer to hold our output
+	static_assert(MDNS_TEXT_BUFFER_SIZE <= BANNER_MAX_LENGTH, "");
+
+	const u_int inlen = *len;
+	u_int off = 0;
+	int r;
 
 	r = dns_process_header(&off, banner, len);
 	if(r == 1)
 		return 0;
 	ERR_IF(r == -1)
 
-	while(off < *len) {
+	while(off < inlen) {
 		// parse answer record
-		r = dns_skip_labels(&off, banner, *len);
+		r = dns_skip_labels(&off, banner, inlen);
 		ERR_IF(r == -1)
-		ERR_IF(off + 10 > *len)
+		ERR_IF(off + 10 > inlen)
 		uint16_t rr_type = (banner[off] << 8) | banner[off+1];
 		uint16_t rr_rdlength = (banner[off+8] << 8) | banner[off+9];
 		ERR_IF(rr_type != 0x000c /* PTR */)
@@ -574,7 +587,7 @@ static int mdns_process(uchar *banner, unsigned int *len)
 		off += 10;
 
 		// copy the domain pointed by record
-		ERR_IF(off + rr_rdlength > *len)
+		ERR_IF(off + rr_rdlength > inlen)
 		int endoff = off + rr_rdlength;
 		r = dns_copy_labels(off, banner, endoff, &extra);
 		ERR_IF(r == -1)
@@ -585,13 +598,14 @@ static int mdns_process(uchar *banner, unsigned int *len)
 	obuf_copy(&extra, (char*) banner, len);
 	return 0;
 }
+
 #undef ERR_IF
 
 /** IKEv2 **/
 // https://tools.ietf.org/html/rfc7296#section-3.1
 // https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml
 
-#define IKEV2_TEXT_BUFFER_SIZE 1024 // must be <= BANNER_MAX_LENGTH
+#define IKEV2_TEXT_BUFFER_SIZE 1024
 #define ERR_IF(expr) \
 	if(expr) { return -1; }
 #define WRITEF(...) { \
@@ -602,6 +616,7 @@ static int mdns_process(uchar *banner, unsigned int *len)
 #define WRITEHEX(buf, max) \
 	for(int _i = 0; _i < max; _i++) \
 		WRITEF("%02x", (int) (buf)[_i])
+
 static int ikev2_process_header(uchar *header, char *extra)
 {
 	ERR_IF((header[17] & 0xf0) != 0x20) // version != 2.x
@@ -616,7 +631,7 @@ static int ikev2_process_header(uchar *header, char *extra)
 	return 0;
 }
 
-static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, char *extra)
+static int ikev2_process_payload(uint8_t type, uchar *buffer, u_int len, char *extra)
 {
 	switch(type) {
 		case 33: // Security Association
@@ -681,23 +696,26 @@ static int ikev2_process_payload(uint8_t type, uchar *buffer, unsigned int len, 
 	return 0;
 }
 
-static int ikev2_process(int off, uchar *banner, unsigned int *len)
+static int ikev2_process(u_int off, uchar *banner, u_int *len)
 {
 	char extra[IKEV2_TEXT_BUFFER_SIZE]; // temporary buffer to hold our output
+	static_assert(IKEV2_TEXT_BUFFER_SIZE <= BANNER_MAX_LENGTH, "");
 	*extra = '\0';
 
+	const u_int inlen = *len;
+
 	int r;
-	ERR_IF(off + 28 > *len)
+	ERR_IF(off + 28 > inlen)
 	r = ikev2_process_header(&banner[off], extra);
 	ERR_IF(r == -1)
 
 	uint8_t next_payload = banner[off+16];
 	off += 28;
 	do {
-		ERR_IF(off + 4 > *len)
+		ERR_IF(off + 4 > inlen)
 		uint16_t payload_length = banner[off+2] << 8 | banner[off+3];
 		ERR_IF(payload_length < 4)
-		ERR_IF(off + payload_length > *len)
+		ERR_IF(off + payload_length > inlen)
 
 		r = ikev2_process_payload(next_payload, &banner[off+4], payload_length - 4, extra);
 		ERR_IF(r == -1)
@@ -711,6 +729,7 @@ static int ikev2_process(int off, uchar *banner, unsigned int *len)
 	*len = final_len;
 	return 0;
 }
+
 #undef ERR_IF
 #undef WRITEF
 #undef WRITEHEX
@@ -719,9 +738,10 @@ static int ikev2_process(int off, uchar *banner, unsigned int *len)
 
 #define ERR_IF(expr) \
 	if(expr) { return -1; }
-static int snmp_decode_length(int *_off, uchar *banner, unsigned int len, uint16_t *decoded)
+
+static int snmp_decode_length(u_int *_off, uchar *banner, u_int len, uint16_t *decoded)
 {
-	int off = *_off;
+	u_int off = *_off;
 
 	ERR_IF(off + 1 > len)
 	uint8_t first = banner[off];
@@ -750,9 +770,9 @@ static int snmp_decode_length(int *_off, uchar *banner, unsigned int len, uint16
 	return 0;
 }
 
-static int snmp_check_opaque(int *_off, uchar *banner, unsigned int len, uint8_t type, int skip)
+static int snmp_check_opaque(u_int *_off, uchar *banner, u_int len, uint8_t type, int skip)
 {
-	int off = *_off;
+	u_int off = *_off;
 	int r;
 
 	ERR_IF(off + 1 > len)
@@ -770,9 +790,9 @@ static int snmp_check_opaque(int *_off, uchar *banner, unsigned int len, uint8_t
 	return 0;
 }
 
-static int snmp_decode_integer(int *_off, uchar *banner, unsigned int len, uint32_t *decoded)
+static int snmp_decode_integer(u_int *_off, uchar *banner, u_int len, uint32_t *decoded)
 {
-	int off = *_off;
+	u_int off = *_off;
 	int r;
 
 	ERR_IF(off + 1 > len)
@@ -803,9 +823,9 @@ static int snmp_decode_integer(int *_off, uchar *banner, unsigned int len, uint3
 	return 0;
 }
 
-static int snmp_decode_string(int *_off, uchar *banner, unsigned int len, uint32_t *slen)
+static int snmp_decode_string(u_int *_off, uchar *banner, u_int len, uint32_t *slen)
 {
-	int off = *_off;
+	u_int off = *_off;
 	int r;
 
 	ERR_IF(off + 1 > len)
@@ -822,49 +842,51 @@ static int snmp_decode_string(int *_off, uchar *banner, unsigned int len, uint32
 	return 0;
 }
 
-static int snmp_process(uchar *banner, unsigned int *len)
+static int snmp_process(uchar *banner, u_int *len)
 {
-	int off, r;
+	const u_int inlen = *len;
+	u_int off = 0;
+	int r;
 
-	off = 0;
-	r = snmp_check_opaque(&off, banner, *len, 0x30, 0); // ??
+	r = snmp_check_opaque(&off, banner, inlen, 0x30, 0); // variable-bindings
 	ERR_IF(r == -1)
 
 	uint32_t val;
-	r = snmp_decode_integer(&off, banner, *len, &val); // version
+	r = snmp_decode_integer(&off, banner, inlen, &val); // version
 	ERR_IF(r == -1)
 	ERR_IF(val != 0)
 
-	r = snmp_decode_string(&off, banner, *len, &val); // community string
+	r = snmp_decode_string(&off, banner, inlen, &val); // community string
 	ERR_IF(r == -1)
 	off += val;
 
-	r = snmp_check_opaque(&off, banner, *len, 0xa2, 0); // get-response
+	r = snmp_check_opaque(&off, banner, inlen, 0xa2, 0); // get-response
 	ERR_IF(r == -1)
 
-	r = snmp_decode_integer(&off, banner, *len, &val); // request-id
+	r = snmp_decode_integer(&off, banner, inlen, &val); // request-id
 	ERR_IF(r == -1)
 
-	r = snmp_decode_integer(&off, banner, *len, &val); // error-status
+	r = snmp_decode_integer(&off, banner, inlen, &val); // error-status
 	ERR_IF(r == -1)
 	if(val != 0) {
-		snprintf((char*) banner, *len, "-error %d-", val);
-		*len = strlen((char*) banner);
-		return 0;
+		const int outlen = snprintf((char*) banner, BANNER_MAX_LENGTH,
+			"-error %d-", val);
+		*len = outlen > 0 ? outlen : 0;
+		return outlen > 0;
 	}
 
-	r = snmp_decode_integer(&off, banner, *len, &val); // error-index
+	r = snmp_decode_integer(&off, banner, inlen, &val); // error-index
 	ERR_IF(r == -1)
 
 	for(int i = 0; i < 2; i++) {
-		r = snmp_check_opaque(&off, banner, *len, 0x30, 0); // ??
+		r = snmp_check_opaque(&off, banner, inlen, 0x30, 0); // variable-bindings
 		ERR_IF(r == -1)
 	}
 
-	r = snmp_check_opaque(&off, banner, *len, 0x06, 1); // OID
+	r = snmp_check_opaque(&off, banner, inlen, 0x06, 1); // OID
 	ERR_IF(r == -1)
 
-	r = snmp_decode_string(&off, banner, *len, &val); // value associated with OID
+	r = snmp_decode_string(&off, banner, inlen, &val); // value associated with OID
 	ERR_IF(r == -1)
 
 	// return just that string
@@ -872,17 +894,20 @@ static int snmp_process(uchar *banner, unsigned int *len)
 	*len = val;
 	return 0;
 }
+
 #undef ERR_IF
 
 /** PPTP **/
 
 #define ERR_IF(expr) \
 	if(expr) { return -1; }
-static int pptp_process(uchar *banner, unsigned int *len)
-{
-	int off = 0;
 
-	ERR_IF(off + 156 > *len)
+static int pptp_process(uchar *banner, u_int *len)
+{
+	const u_int inlen = *len;
+	u_int off = 0;
+
+	ERR_IF(off + 156 > inlen)
 	uint16_t msgtype = banner[off+2] << 8 | banner[off+3];
 	ERR_IF(msgtype != 1) // control message
 	static const uchar cookie[] = { 0x1a, 0x2b, 0x3c, 0x4d };
@@ -896,41 +921,45 @@ static int pptp_process(uchar *banner, unsigned int *len)
 	memcpy(vendor, &banner[off+92], 64);
 	vendor[64] = '\0';
 
-	snprintf((char*) banner, BANNER_MAX_LENGTH,
+	const int outlen = snprintf((char*) banner, BANNER_MAX_LENGTH,
 		"Firmware: %d\nHostname: %s\nVendor: %s", firmware, hostname, vendor);
-	*len = strlen((char*) banner);
-	return 0;
+	*len = outlen > 0 ? outlen : 0;
+	return outlen > 0;
 }
+
 #undef ERR_IF
 
 /** MySQL **/
 
 #define ERR_IF(expr) \
 	if(expr) { return -1; }
-static int mysql_process(uchar *banner, unsigned int *len)
-{
-	int off = 0;
 
-	ERR_IF(off + 5 > *len)
+static int mysql_process(uchar *banner, u_int *len)
+{
+	const u_int inlen = *len;
+	u_int off = 0;
+
+	ERR_IF(off + 5 > inlen)
 	uint8_t protocol = banner[off+4];
 	off += 5;
 
 	if(protocol == 0xff) {
-		ERR_IF(off + 2 > *len)
+		ERR_IF(off + 2 > inlen)
 		off += 2; // skip error code
 	} else {
 		ERR_IF(protocol != 10)
 	}
 
 	// version string / error message
-	int i = 0;
-	while(off+i < *len && banner[off+i] != 0)
+	u_int i = 0;
+	while(off+i < inlen && banner[off+i] != 0)
 		i++;
 
 	memmove(banner, &banner[off], i);
 	*len = i;
 	return 0;
 }
+
 #undef ERR_IF
 
 /** NTP **/
@@ -939,9 +968,9 @@ static int mysql_process(uchar *banner, unsigned int *len)
 	if(expr) { return -1; }
 #define ASCII_SAFE(x) ((x) >= 32 && (x) <= 126 ? (char)(x) : '.')
 
-static int ntp_process(uchar *banner, unsigned int *len)
+static int ntp_process(uchar *banner, u_int *len)
 {
-	const unsigned int inlen = *len;
+	const u_int inlen = *len;
 
 	ERR_IF(inlen < 48)
 

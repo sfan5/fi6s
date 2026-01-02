@@ -1,9 +1,15 @@
 # fi6s: Fast IPv6 scanner
 
-fi6s is an IPv6 port scanner designed to be fast.
+fi6s is an IPv6 port scanner designed to be fast, aimed at Internet scanning and discovery.
 This is achieved by sending and processing raw packets asynchronously.
+
 The design and goal is pretty similar to [Masscan](https://github.com/robertdavidgraham/masscan),
-though it is not as full-featured yet.
+though it is not as full-featured.
+
+Please take note of the [license](./LICENSE).
+
+Finally: This is a security research tool and you (the user) are fully responsible
+for following local regulations and obtaining permission as necessary when using it.
 
 ## Compiling
 
@@ -17,12 +23,11 @@ Building fi6s is fairly easy on any recent Linux system, e.g. on Ubuntu:
 The scanner executable will be ready at `./fi6s`.
 
 Note that fi6s is developed and tested solely on Linux. Other UNIX-like platforms
-*should* work, but not Windows.
+*should* work, Windows will not.
 
 ## Usage
 
-Usage is pretty easy, fi6s will try to auto-detect the dirty technical details
-such as source, router MAC addresses and source IP.
+fi6s will auto-detect the dirty network details (source, router MACs and IPs) for you, so you can jump right into scanning:
 
 	# ./fi6s -p 80,8000-8100 --max-rate 170 2001:db8::/120
 
@@ -33,15 +38,15 @@ This example will:
 * output scan results to standard output in the "`list`" format
 
 There are more different ways of specifying an address range to scan,
-if you aren't sure what's about to happen run fi6s with `--print-summary` to get
-a quick overview about the scan or `--print-hosts` to print all potential IPs.
+if you aren't sure what's about to happen use `--print-summary` to get a quick
+overview about the scan or `--print-hosts` to print all potential target IPs.
 
-For more advanced features please consult the output of `fi6s --help`.
+For more advanced features and additional explanations please consult the output of `fi6s --help`.
 
 ## Collecting banners
 
 The data a remote host sends in response to a new connection or probe request
-is called "banner". fi6s makes it easy to collect these.
+is called a "banner". fi6s makes it easy to collect them.
 
 All you need to do is pass the `--banners` option:
 
@@ -51,7 +56,7 @@ All you need to do is pass the `--banners` option:
 
 Add the `--udp` flag to your command line:
 
-	# ./fi6s -p 53 --banners --udp 2001:db8::xx
+	# ./fi6s -p 53 --banners --udp 2001:db8:xx::1
 
 Note that unlike TCP, you will only get useful (or any) results if you scan
 a port whose protocol is supported for probing by fi6s.
@@ -61,38 +66,49 @@ Use `fi6s --list-protocols` to view a list.
 
 Since fi6s brings its own minimal TCP/IP stack the operating system has to be prevented
 from trying to talk TCP on the same port fi6s is using, or it would break the scanning process.
-It would typically send RST frames in this case.
 
 By default fi6s will ask the OS to reserve an ephemeral port and use it for the
 duration of the scan. This only works on Linux.
 
-*If this doesn't work* or you are on a different platform you will have to set a
-source port and configure your firewall to drop traffic on this port, e.g.:
+If this fails or you are on a different platform (*fi6s will tell you!*)
+you have to decide on a source port and configure your firewall to drop all
+traffic on this port, e.g.:
 
+	# ipfw add deny tcp from any to any 12345 in ip6
+	or:
 	# ip6tables -A INPUT -p tcp -m tcp --dport 12345 -j DROP
+	and then:
 	# ./fi6s -p 22 --banners --source-port 12345 2001:db8::xx
 
-Since UDP is connection-less there is no need to prevent interference, though this
-is still a good idea to prevent your OS from sending unnecessary ICMPv6 unreachable
-responses (fi6s also tries this by default).
+Since UDP is connection-less there is no need to do this, but it's still
+a good idea to prevent your OS from sending unnecessary ICMPv6 unreachable
+responses. fi6s will also do this by default.
 
 ### Selecting the source IP
 
 A big advantage of IPv6 is the large address space, and another way of avoiding
-the IP stack problem described above is to just use a different source IP.
+the problem described above is to just use a different source IP.
 
-This IP should not be assigned to your local machine, but it *must* be statically routed
+This IP should not be assigned to your local machine, but it **must** be statically routed
 to your machine, because fi6s will not answer NDP queries.
 
-To check if an IP is working correctly you can simply ping a known public IP, e.g.:
+To check if your setup is working correctly you can simply ping a known public IP, e.g.:
 
-	# ./fi6s --icmp --source-ip $your_ip 2001:4860:4860::8888
+	# ./fi6s --icmp --source-ip ${chosen_src_ip} 2001:4860:4860::8888
+
+## ICMP
+
+Use `--icmp` to do an ICMPv6 Ping scan:
+
+	# ./fi6s --icmp 2001:xxx0::1
+
+The round trip time will not be measured.
 
 ## Limitations
 
 In order to permit the design of fi6s some assumptions had to be made about
-the network environment. These do not impact typical usage at all but listed here
-for completeness.
+the network environment. These do not impact typical usage at all but are listed
+here for completeness.
 
 This means fi6s may not perform as expected or outright not work if:
 * you have a non-trivial routing table (it will be ignored. fi6s expects a single gateway)
@@ -104,3 +120,19 @@ This means fi6s may not perform as expected or outright not work if:
 For banner collection note that fi6s does not come with anything resembling a real TCP
 stack. It merely supports sending one query and reading response data that follows.
 Resends or window logic are not implemented.
+
+### Scanned IP vs response IP
+
+While fi6s uses port and sequence numbers to ensure that the results you get are
+related to the specific running scan, it does **not** have a check to
+compare the IP a probe was sent to with the IP that is actually responding.
+
+This means if you e.g. run ping or a traceroute during an ICMP scan, the
+results will *not* be contaminated.
+
+However it *is possible* for `2001:db8:f00::1` to show up in the scan results
+despite specifying `2001:db8:0::/116` as target subnet.
+This property can be useful in practice, since some routers will accept SNMP or
+DNS queries on the zero network address, but answer with their primary IPv6.
+
+Example: scan `3fff:1234:1234:44xx::` -> response from `3fff:1234:1234:44a3:e2a:86ff:fe12:3456`

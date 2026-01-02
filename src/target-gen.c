@@ -322,9 +322,9 @@ int target_gen_sanity_check(void)
 			"thousands YEARS to enumerate.\nYou will need to rethink your approach. "
 			"Good advice on IPv6 scanning can be found on the internet.\n"
 			"\n"
-			"In case you were hoping to scan stochastically, note that fi6s "
-			"IP randomization is not suited for this.\nAs an alternative you can "
-			"let an external program generate IPs and use --stream-targets.\n"
+			"In case you were hoping to scan stochastically, note that the way "
+			"fi6s randomizes targets is not suited for this.\nAs an alternative "
+			"you can have an external program generate IPs and use --stream-targets.\n"
 		);
 		return -1;
 	}

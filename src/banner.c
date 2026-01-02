@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <string.h>
+#include <assert.h>
 
 #include "banner.h"
 #include "rawsock.h"
@@ -24,6 +25,7 @@ static const struct m_entry typelist[] = {
 	{ "snmp",     { 161 }, 0, 1 },
 	{ "tls",      { 443 }, 1, 0 },
 	{ "ike",      { 500, 4500 }, 0, 1 },
+	{ "rtsp",     { 554 }, 1, 0 },
 	{ "pptp",     { 1723 }, 1, 0 },
 	{ "mysql",    { 3306 }, 1, 0 },
 	{ "sip",      { 5060 }, 0, 1 },
@@ -31,40 +33,34 @@ static const struct m_entry typelist[] = {
 	{ NULL, }
 };
 
-// Same as above, but as a map and just the data we need in practice
-static const char *typemap_low[512] = {
-	[21] = "ftp",
-	[22] = "ssh",
-	[23] = "telnet",
-	[53] = "domain",
-	[80] = "http",
-	[161] = "snmp",
-	[443] = "tls",
-	[500] = "ike",
-};
+#define CASE(port, name) case (port): return (name);
+#define CASE2(port1, port2, name) case (port1): case (port2): return (name);
 
 const char *banner_service_type(uint8_t ip_type, int port)
 {
 	(void) ip_type;
-	if(port < sizeof(typemap_low) / sizeof(*typemap_low))
-		return typemap_low[port];
+	// Same data as typelist[] but inlined for practicality
 	switch(port) {
-		case 1723:
-			return "pptp";
-		case 3306:
-			return "mysql";
-		case 4500:
-			return typemap_low[500];
-		case 5060:
-			return "sip";
-		case 5353:
-			return "mdns";
-		case 8080:
-			return typemap_low[80];
+		CASE(21, "ftp")
+		CASE(22, "ssh")
+		CASE(23, "telnet")
+		CASE(53, "domain")
+		CASE2(80, 8080, "http")
+		CASE(161, "snmp")
+		CASE(443, "tls")
+		CASE2(500, 4500, "ike")
+		CASE(554, "rtsp")
+		CASE(1723, "pptp")
+		CASE(3306, "mysql")
+		CASE(5060, "sip")
+		CASE(5353, "mdns")
 		default:
 			return NULL;
 	}
 }
+
+#undef CASE
+#undef CASE2
 
 void banner_print_service_types()
 {
@@ -76,6 +72,8 @@ void banner_print_service_types()
 		for(int i = 1; i < 4 && c->port[i] != 0; i++)
 			printf(",%d", c->port[i]);
 		printf(" %s\n", c->name);
+
+		assert(!strcmp(c->name, banner_service_type(IP_TYPE_TCP, c->port[0])));
 	}
 	printf("\n");
 
@@ -89,6 +87,8 @@ void banner_print_service_types()
 		unsigned int len = 0;
 		banner_get_query(IP_TYPE_UDP, c->port[0], &len);
 		printf(" %s (%d bytes payload)\n", c->name, len);
+
+		assert(!strcmp(c->name, banner_service_type(IP_TYPE_UDP, c->port[0])));
 	}
 	printf("\n");
 
@@ -179,6 +179,13 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		"\x0d\x00\x0a\x00\x08\x04\x01\x02\x01\x04\x03\x06"
 		"\x03\x00\x17\x00\x00"
 	;
+	static const char rtsp[] =
+		"OPTIONS rtsp://0.0.0.0:554/ RTSP/1.0\r\n"
+		"CSeq: 1\r\n"
+		"User-Agent: fi6s/0.1\r\n"
+		"\r\n"
+	;
+
 
 	switch(port) {
 		case 21:
@@ -191,6 +198,9 @@ static const char *get_query_tcp(int port, unsigned int *len)
 		case 443:
 			*len = sizeof(tls) - 1;
 			return tls;
+		case 554:
+			*len = sizeof(rtsp) - 1;
+			return rtsp;
 		case 1723:
 			*len = sizeof(pptp) - 1;
 			return pptp;
@@ -348,6 +358,7 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 		}
 
 		case 80:
+		case 554:
 		case 8080: {
 			// cut off after headers
 			uchar *end = (uchar*) memmem(banner, *len, "\r\n\r\n", 4);

@@ -1,6 +1,8 @@
-#ifndef _TCP_H
-#define _TCP_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdint.h>
 
 #define TCP_HEADER_SIZE 20
@@ -67,5 +69,3 @@ const uint8_t *tcp_state_get_remote(tcp_state_ptr *p, uint16_t *port);
 
 void tcp_state_delete(tcp_state_ptr *p);
 void tcp_state_unlock(tcp_state_ptr *p);
-
-#endif // _TCP_H

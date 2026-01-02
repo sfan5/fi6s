@@ -1,5 +1,8 @@
-#ifndef _BANNER_H
-#define _BANNER_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
+
+#pragma once
 
 #include <stdint.h>
 
@@ -15,5 +18,3 @@ const char *banner_get_query(uint8_t ip_type, int port, unsigned int *len);
 void banner_postprocess(uint8_t ip_type, int port, char *data, unsigned int *len);
 
 uint8_t banner_outproto2ip_type(int output_proto); // helper used by output modules
-
-#endif // _BANNER_H

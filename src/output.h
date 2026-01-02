@@ -1,6 +1,8 @@
-#ifndef _OUTPUT_H
-#define _OUTPUT_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdio.h>
 #include <stdint.h>
 
@@ -27,5 +29,3 @@ struct outputdef {
 extern const struct outputdef output_list;
 extern const struct outputdef output_json;
 extern const struct outputdef output_binary;
-
-#endif // _OUTPUT_H

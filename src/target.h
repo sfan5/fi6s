@@ -1,6 +1,8 @@
-#ifndef _TARGET_H
-#define _TARGET_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdio.h>
 #include <stdint.h>
 
@@ -28,5 +30,3 @@ void target_gen_print_summary(int max_rate, int nports);
 int target_gen_peek(uint8_t *dst);
 int target_gen_next(uint8_t *dst);
 float target_gen_progress(void);
-
-#endif // _TARGET_H

@@ -1,6 +1,8 @@
-#ifndef _UTIL_H
-#define _UTIL_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -79,5 +81,3 @@ void obuf_copy(const struct obuf *b, char *dest, unsigned int *len); // caller n
 #define DECLARE_OBUF_STACK(name, bufsize) \
 	char name ## _backing [bufsize]; \
 	struct obuf name = { .buffer = name ## _backing, .offset = 0, .size = bufsize };
-
-#endif // _UTIL_H

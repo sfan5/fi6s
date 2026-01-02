@@ -1,3 +1,7 @@
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
+
 #define _GNU_SOURCE // strchrnul()
 #include <string.h>
 #include "os-endian.h"

@@ -1,6 +1,8 @@
-#ifndef _UDP_H
-#define _UDP_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdint.h>
 
 #define UDP_HEADER_SIZE 8
@@ -18,5 +20,3 @@ void udp_modify2(struct udp_header *pkt, uint16_t dlen);
 void udp_checksum(const struct frame_ip *ipf, struct udp_header *pkt, uint16_t dlen);
 
 void udp_decode(const struct udp_header *pkt, int *srcport, int *dstport);
-
-#endif // _TCP_H

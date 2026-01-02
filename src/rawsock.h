@@ -1,6 +1,8 @@
-#ifndef _RAWSOCK_H
-#define _RAWSOCK_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdint.h>
 #include <netinet/in.h>
 
@@ -85,5 +87,3 @@ int rawsock_islocal(const uint8_t *ip);
  * @return reserved port number or -1 if error or -2 if unsupported
 */
 int rawsock_reserve_port(const uint8_t *addr, int type, int port);
-
-#endif // _RAWSOCK_H

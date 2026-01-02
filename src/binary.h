@@ -1,5 +1,8 @@
-#ifndef _BINARY_H
-#define _BINARY_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
+
+#pragma once
 
 #include <stdint.h>
 #include <stdio.h>
@@ -41,5 +44,3 @@ struct rec_header {
 	uint8_t addr[16];
 	// banner data follows here
 } __attribute__(( packed, aligned(RECORD_ALIGN) ));
-
-#endif // _BINARY_H

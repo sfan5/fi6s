@@ -1,6 +1,8 @@
-#ifndef _ICMP_H
-#define _ICMP_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdint.h>
 
 #define ICMP_HEADER_SIZE 8
@@ -18,5 +20,3 @@ struct icmp_header {
 struct frame_ip;
 
 void icmp_checksum(const struct frame_ip *ipf, struct icmp_header *pkt, uint16_t dlen);
-
-#endif // _ICMP_H

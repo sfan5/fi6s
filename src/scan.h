@@ -1,6 +1,8 @@
-#ifndef _SCAN_H
-#define _SCAN_H
+// fi6s
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2016 sfan5 <sfan5@live.de>
 
+#pragma once
 #include <stdio.h>
 #include <stdint.h>
 
@@ -35,5 +37,3 @@ int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t 
 void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket);
 void scan_responder_stats(unsigned int *pkts_sent);
 void scan_responder_finish();
-
-#endif // _SCAN_H

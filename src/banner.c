@@ -22,6 +22,7 @@ static const struct m_entry typelist[] = {
 	{ "telnet",   { 23 }, 1, 0 },
 	{ "domain",   { 53 }, 1, 1 },
 	{ "http",     { 80, 8080 }, 1, 0 },
+	{ "ntp",      { 123 }, 0, 1 },
 	{ "snmp",     { 161 }, 0, 1 },
 	{ "tls",      { 443 }, 1, 0 },
 	{ "ike",      { 500, 4500 }, 0, 1 },
@@ -46,6 +47,7 @@ const char *banner_service_type(uint8_t ip_type, int port)
 		CASE(23, "telnet")
 		CASE(53, "domain")
 		CASE2(80, 8080, "http")
+		CASE(123, "ntp")
 		CASE(161, "snmp")
 		CASE(443, "tls")
 		CASE2(500, 4500, "ike")
@@ -289,9 +291,22 @@ static const char *get_query_udp(int port, unsigned int *len)
 		"\x09" "_services" "\x07" "_dns-sd" "\x04" "_udp" "\x05" "local" "\x00"
 		"\x00\x0c\x00\x01" // _services._dns-sd._udp.local.  IN  PTR
 	;
+	static const char ntp[] =
+		"\x23" // NTP v4, client
+		"\x00\x00\x00" // Clock stratum, Polling interval, Precision
+		"\x00\x00\x00\x00\x00\x00\x00\x00" // Root Delay, Root Dispersion
+		"\x00\x00\x00\x00" // Reference ID
+		"\x00\x00\x00\x00\x00\x00\x00\x00" // Reference timestamp
+		"\x00\x00\x00\x00\x00\x00\x00\x00" // Origin timestamp
+		"\x00\x00\x00\x00\x00\x00\x00\x00" // Receive timestamp
+		"\x00\x00\x00\x00\x00\x00\x00\x00" // Transmit timestamp
+	;
 
 
 	switch(port) {
+		case 123:
+			*len = sizeof(ntp) - 1;
+			return ntp;
 		case 161:
 			*len = sizeof(snmp) - 1;
 			return snmp;
@@ -324,6 +339,7 @@ static int ikev2_process(int off, uchar *banner, unsigned int *len);
 static int snmp_process(uchar *banner, unsigned int *len);
 static int pptp_process(uchar *banner, unsigned int *len);
 static int mysql_process(uchar *banner, unsigned int *len);
+static int ntp_process(uchar *banner, unsigned int *len);
 
 void banner_postprocess(uint8_t ip_type, int port, char *_banner, unsigned int *len)
 {
@@ -391,6 +407,13 @@ void postprocess_tcp(int port, uchar *banner, unsigned int *len)
 void postprocess_udp(int port, uchar *banner, unsigned int *len)
 {
 	switch(port) {
+		case 123: {
+			int r = ntp_process(banner, len);
+			if(r == -1)
+				*len = 0;
+			break;
+		}
+
 		case 161: {
 			int r = snmp_process(banner, len);
 			if(r == -1)
@@ -909,3 +932,38 @@ static int mysql_process(uchar *banner, unsigned int *len)
 	return 0;
 }
 #undef ERR_IF
+
+/** NTP **/
+
+#define ERR_IF(expr) \
+	if(expr) { return -1; }
+#define ASCII_SAFE(x) ((x) >= 32 && (x) <= 126 ? (char)(x) : '.')
+
+static int ntp_process(uchar *banner, unsigned int *len)
+{
+	const unsigned int inlen = *len;
+
+	ERR_IF(inlen < 48)
+
+	uint8_t mode = banner[0] & 7, ver = (banner[0] >> 3) & 7, leap = banner[0] >> 6;
+	ERR_IF(mode == 3) // mode == client
+	ERR_IF(ver < 1) // version < 1
+
+	uint8_t stratum = banner[1];
+	int8_t poll = banner[2];
+	int8_t precision = banner[3];
+	uchar refid[4];
+	memcpy(refid, &banner[12], 4);
+
+	const int outlen = snprintf((char*) banner, BANNER_MAX_LENGTH,
+		"version: %d\nleap: %d\nmode: %d\nstratum: %d\npoll: %d\nprecision: %d\n"
+		"refid: %u.%u.%u.%u '%c%c%c%c'",
+		(int)ver, (int)leap, (int)mode, (int)stratum, (int)poll, (int)precision,
+		refid[0], refid[1], refid[2], refid[3],
+		ASCII_SAFE(refid[0]), ASCII_SAFE(refid[1]), ASCII_SAFE(refid[2]), ASCII_SAFE(refid[3]));
+	*len = outlen > 0 ? outlen : 0;
+	return outlen > 0;
+}
+
+#undef ERR_IF
+#undef ASCII_SAFE

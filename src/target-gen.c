@@ -241,7 +241,7 @@ void target_gen_print_summary(int max_rate, int nports)
 		printf("%" PRIu64 " addresses.\n", total);
 	if (targets_i == 1)
 		printf("Target is equivalent to a /%d subnet.\n", largest);
-	else
+	else if (largest != 128)
 		printf("Largest target is equivalent to /%d subnet, smallest /%d.\n", largest, smallest);
 
 	if(max_rate != -1) {

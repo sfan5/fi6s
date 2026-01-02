@@ -3,17 +3,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <assert.h>
 #include <pthread.h>
 
 #include "tcp.h"
 #include "banner.h"
 #include "util.h"
 
-#define TCP_BUFFER_LEN BANNER_MAX_LENGTH
-#define TCP_STATES_PER_CHUNK 256
+enum {
+	TCP_BUFFER_LEN = BANNER_MAX_LENGTH,
+	TCP_STATES_PER_CHUNK = 256,
+};
 
 #define TCP_PTR_CHUNK(ptr) ((struct tcp_states_chunk*) (ptr)->c)
 #define TCP_PTR_STATE(ptr) TCP_PTR_CHUNK(ptr)->s[(ptr)->i]
+#define TCP_PTR_STATE_BUF(ptr) (&TCP_PTR_CHUNK(ptr)->big_buffer[TCP_BUFFER_LEN * (ptr)->i])
 
 struct tcp_state {
 	// remote endpoint
@@ -21,8 +25,8 @@ struct tcp_state {
 	uint16_t srcport; // == 0 indicates free entry
 
 	// timestamps
+	uint32_t saved_timestamp;
 	uint64_t creation_time; // monotonic, in ms
-	uint64_t saved_timestamp;
 
 	// local state
 	uint32_t next_lseqnum; // seqnum of next packet we would be sending
@@ -32,8 +36,7 @@ struct tcp_state {
 	uint32_t first_rseqnum; // == <seqnum of syn-ack> + 1
 	uint32_t max_rseqnum; // highest seen of (seqnum + payload len)
 
-	// received data
-	char buffer[TCP_BUFFER_LEN];
+	// received data is stored in parent buffer, see TCP_PTR_STATE_BUF
 };
 
 struct tcp_states_chunk {
@@ -45,6 +48,8 @@ struct tcp_states_chunk {
 
 	struct tcp_state s[TCP_STATES_PER_CHUNK];
 	struct tcp_states_chunk *next;
+
+	char big_buffer[TCP_BUFFER_LEN * TCP_STATES_PER_CHUNK];
 };
 
 static struct tcp_states_chunk *first;
@@ -87,14 +92,14 @@ void tcp_state_create(const uint8_t *srcaddr, uint16_t srcport, uint64_t ts, uin
 	struct tcp_state *s = &TCP_PTR_STATE(&p);
 	memcpy(s->srcaddr, srcaddr, 16);
 	s->srcport = srcport;
+	s->saved_timestamp = (uint32_t)ts; // <-- Y2106 problem
 	s->creation_time = monotonic_ms();
-	s->saved_timestamp = ts;
 	s->next_lseqnum = next_lseqnum;
 	s->have_fin = 0;
 	s->first_rseqnum = first_rseqnum + 1;
 	s->max_rseqnum = s->first_rseqnum;
 #ifndef NDEBUG
-	memset(s->buffer, 0, sizeof(s->buffer));
+	memset(TCP_PTR_STATE_BUF(&p), 0, TCP_BUFFER_LEN);
 #endif
 
 	tcp_state_unlock(&p);
@@ -120,14 +125,15 @@ int tcp_state_next_expired(int timeout, tcp_state_ptr *out_p)
 				goto found;
 		}
 
-		if(!cur->next) {
+		struct tcp_states_chunk *next = cur->next;
+		if(!next) {
 			pthread_mutex_unlock(&cur->lock);
 			return 0;
 		}
 
-		pthread_mutex_lock(&cur->next->lock);
+		pthread_mutex_lock(&next->lock);
 		pthread_mutex_unlock(&cur->lock);
-		cur = cur->next;
+		cur = next;
 	} while(1);
 
 found:
@@ -160,7 +166,7 @@ void *tcp_state_get_buffer(tcp_state_ptr *p, uint32_t *length)
 {
 	struct tcp_state *s = &TCP_PTR_STATE(p);
 	*length = s->max_rseqnum - s->first_rseqnum;
-	return s->buffer;
+	return TCP_PTR_STATE_BUF(p);
 }
 
 void tcp_state_get_misc(tcp_state_ptr *p, uint64_t *timestamp, int *fin)
@@ -185,10 +191,9 @@ void tcp_state_delete(tcp_state_ptr *p)
 
 void tcp_state_unlock(tcp_state_ptr *p)
 {
+	assert(p->i <= TCP_STATES_PER_CHUNK);
 	pthread_mutex_unlock(&TCP_PTR_CHUNK(p)->lock);
-#ifndef NDEBUG
 	p->c = NULL;
-#endif
 }
 
 
@@ -224,9 +229,10 @@ static void internal_find_empty(tcp_state_ptr *out_p)
 			}
 		}
 
-		pthread_mutex_lock(&cur->next->lock);
+		struct tcp_states_chunk *next = cur->next;
+		pthread_mutex_lock(&next->lock);
 		pthread_mutex_unlock(&cur->lock);
-		cur = cur->next;
+		cur = next;
 	} while(1);
 
 found: ;
@@ -247,14 +253,15 @@ static int internal_find(const uint8_t *srcaddr, uint16_t srcport, tcp_state_ptr
 				goto found;
 		}
 
-		if(!cur->next) {
+		struct tcp_states_chunk *next = cur->next;
+		if(!next) {
 			pthread_mutex_unlock(&cur->lock);
 			return 0;
 		}
 
-		pthread_mutex_lock(&cur->next->lock);
+		pthread_mutex_lock(&next->lock);
 		pthread_mutex_unlock(&cur->lock);
-		cur = cur->next;
+		cur = next;
 	} while(1);
 
 found:
@@ -278,7 +285,8 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 		log_debug("%u bytes are partially past buffer end in state %p[%d]", length, p->c, (int)p->i);
 		length = TCP_BUFFER_LEN - offset;
 	}
-	memcpy(&s->buffer[offset], data, length);
+	char *buffer = TCP_PTR_STATE_BUF(p);
+	memcpy(&buffer[offset], data, length);
 
 	if(seqnum > s->max_rseqnum) {
 		uint32_t count = seqnum - s->max_rseqnum;
@@ -287,7 +295,7 @@ static void internal_push(tcp_state_ptr *p, void *data, uint32_t length, uint32_
 		// the previous packet might still arrive and fill the hole,
 		// but if it doesn't we don't want uninitialized data lying around.
 		log_debug("discontinuity in seqnums (missing %u) in state %p[%d]", count, p->c, (int)p->i);
-		memset(&s->buffer[offset], 0, count);
+		memset(&buffer[offset], 0, count);
 	}
 	if(seqnum + length > s->max_rseqnum)
 		s->max_rseqnum = seqnum + length;

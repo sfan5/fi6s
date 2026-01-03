@@ -288,6 +288,7 @@ int main(int argc, char *argv[])
 		struct sockaddr_in6 globaddr = {0};
 		globaddr.sin6_family = AF_INET6;
 		globaddr.sin6_addr.s6_addr[0] = 0x20; // 2000::
+		globaddr.sin6_port = htons(1);
 		rawsock_getsrcip(&globaddr, interface, source_addr, 1);
 	}
 
@@ -364,6 +365,7 @@ int main(int argc, char *argv[])
 			// determine source address from first actual target
 			struct sockaddr_in6 testaddr = {0};
 			testaddr.sin6_family = AF_INET6;
+			testaddr.sin6_port = htons(1);
 			target_gen_peek(testaddr.sin6_addr.s6_addr);
 			if(rawsock_getsrcip(&testaddr, interface, source_addr, 2) == 0) {
 				char buf[IPV6_STRING_MAX], buf2[IPV6_STRING_MAX];

@@ -74,7 +74,7 @@ If this fails or you are on a different platform (*fi6s will tell you!*)
 you have to decide on a source port and configure your firewall to drop all
 traffic on this port, e.g.:
 
-	# ipfw add deny tcp from any to any 12345 in ip6
+	# ipfw add 1000 deny tcp from any to any 12345 in ip6
 	or:
 	# ip6tables -A INPUT -p tcp -m tcp --dport 12345 -j DROP
 	and then:

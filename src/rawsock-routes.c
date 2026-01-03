@@ -20,6 +20,12 @@
 #include <linux/filter.h>
 #endif
 
+#if defined(__FreeBSD__) || defined(__OpenBSD__)
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <net/if_dl.h>
+#endif
+
 #include "rawsock.h"
 #include "util.h"
 
@@ -245,6 +251,27 @@ int rawsock_getmac(const char *dev, uint8_t *mac)
 	int rd = fread(buf, 1, sizeof(buf), f);
 	fclose(f);
 	return rd > 0 ? parse_mac(buf, mac) : -1;
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
+	struct ifaddrs *all = NULL;
+	if(getifaddrs(&all) != 0)
+		return -1;
+
+	int r = -1;
+	for(struct ifaddrs *a = all; a; a = a->ifa_next) {
+		if(strcmp(a->ifa_name, dev) != 0)
+			continue;
+		if(a->ifa_addr && a->ifa_addr->sa_family == AF_LINK) {
+			 struct sockaddr_dl *sdl = (struct sockaddr_dl*) a->ifa_addr;
+			 if(sdl->sdl_alen == 6) {
+				memcpy(mac, LLADDR(sdl), 6);
+				r = 0;
+				break;
+			 }
+		}
+	}
+
+	freeifaddrs(all);
+	return r;
 #else
 	(void) dev, (void) mac;
 	return -1;
@@ -388,6 +415,7 @@ int rawsock_reserve_port(const uint8_t *addr, int type, int port)
 	assert(tmp.sin6_port != 0);
 	return ntohs(tmp.sin6_port);
 #else
+	(void) addr, (void) type, (void) port;
 	return -2;
 #endif
 }

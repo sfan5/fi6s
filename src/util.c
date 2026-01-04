@@ -209,10 +209,9 @@ int parse_mac(const char *str, uint8_t *dst)
 	return 0;
 }
 
-static int _parse_ipv6(const char *str, uint8_t *dst)
+static int _parse_ipv6(const char *str, uint8_t *dst, int given)
 {
 	memset(dst, 0, 16);
-	int given = strchr_count(str, ':') + 1;
 	if(given < 3 || given > 8) // '::' is 3 elements
 		return -1;
 
@@ -225,9 +224,9 @@ static int _parse_ipv6(const char *str, uint8_t *dst)
 		strncpy_term(cur, p, next - p);
 
 		// FIXME: this will accept invalid addrs like :12::34:
-		if((i == 0 || i == 7) && strlen(cur) == 0)
+		if((i == 0 || i == 7) && !cur[0])
 			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
-		if(strlen(cur) == 0) {
+		if(!cur[0]) {
 			// zero compression: an empty field fills up the missing zeroes
 			i += 8 - given;
 			goto next;
@@ -236,8 +235,8 @@ static int _parse_ipv6(const char *str, uint8_t *dst)
 		int val = strtol_simple(cur, 16);
 		if(val == -1)
 			return -1;
-		uint16_t val_fixed = htobe16(val & 0xffff);
-		memcpy(&dst[i*2], &val_fixed, 2);
+		dst[i*2] = (val & 0xffff) >> 8;
+		dst[i*2+1] = val & 0xff;
 
 		next:
 		if(*next == '\0')
@@ -256,17 +255,16 @@ int parse_ipv6(const char *str, uint8_t *dst)
 	// special handling for ::1:2:3:4:5:6:7 and 1:2:3:4:5:6:7::
 	// this is some seriously retarded shit, WHO CAME UP WITH THIS??
 	if(given == 9) {
-		char buf[40];
-		strncpy(buf, str, sizeof(buf) - 1);
-		buf[sizeof(buf) - 1] = '\0';
+		char buf[IPV6_STRING_MAX];
+		strncpy_term(buf, str, sizeof(buf) - 1);
 		if(!strncmp(str, "::", 2))
 			buf[0] = '0';
 		else if(!strncmp(str + strlen(str) - 2, "::", 2))
 			buf[strlen(str) - 1] = '0';
-		return _parse_ipv6(buf, dst);
+		return _parse_ipv6(buf, dst, 8);
 	}
 
-	return _parse_ipv6(str, dst);
+	return _parse_ipv6(str, dst, given);
 }
 
 int strtol_simple(const char *str, int base)
@@ -302,21 +300,28 @@ int realloc_if_needed(void **array, unsigned int elemsize, unsigned int used, un
 	return 0;
 }
 
-void trim_string(char *buf, const char *trimchars)
+#define ISWSPACE(c) ((c) == ' ' || ((c) >= 9 && (c) <= 13))
+
+void trim_space(char *buf)
 {
+	unsigned int len = strlen(buf);
+
 	// front
-	int i = 0;
-	while(buf[i] && strchr(trimchars, buf[i]))
+	unsigned int i = 0;
+	while(buf[i] && ISWSPACE(buf[i]))
 		i++;
-	if(i > 0)
-		memmove(buf, &buf[i], strlen(buf) + 1 - i);
+	if(i > 0) {
+		len -= i;
+		memmove(buf, &buf[i], len + 1);
+	}
 
 	// back
-	char *ptr = buf + strlen(buf) - 1;
-	while(ptr > buf && strchr(trimchars, *ptr))
-		ptr--;
-	*(ptr + 1) = '\0';
+	while(len > 0 && ISWSPACE(buf[len-1]))
+		len--;
+	buf[len] = 0;
 }
+
+#undef ISWSPACE
 
 void set_thread_name(const char *name)
 {

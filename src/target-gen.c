@@ -12,18 +12,20 @@
 #include "target.h"
 #include "util.h"
 
+// recommend to check `t->bits > 64` first
+#define TARGET_ADDR_COUNT(t) ( UINT64_C(1) << (128 - (t)->bits) )
+
 struct targetstate {
 	struct targetspec spec;
 	uint8_t cur[16];
 	uint64_t delayed_start;
-	uint8_t tmp; // (only used during sort)
+	uint8_t bits; // number of bits *set* in netmask
 	unsigned done : 1;
 };
 
 static int cmp_target(const void *a, const void *b);
 static void dump_targets(int ndump);
-static void shuffle(void *buf, int stride, int n);
-static int popcount(uint32_t x);
+static void shuffle(void *buf, unsigned int stride, int n);
 static void fill_cache(void);
 static void next_addr(struct targetstate *t, uint8_t *dst);
 static int count_mask_bits(const struct targetstate *t);
@@ -122,7 +124,8 @@ int target_gen_add(const struct targetspec *s)
 static int cmp_target(const void *a, const void *b)
 {
 	const struct targetstate *ta = a, *tb = b;
-	return (ta->tmp > tb->tmp) - (ta->tmp < tb->tmp); // ascending
+	// mask bits ascending => biggest target first
+	return (ta->bits > tb->bits) - (ta->bits < tb->bits);
 }
 
 static void dump_targets(int ndump)
@@ -137,7 +140,7 @@ static void dump_targets(int ndump)
 		fprintf(to, "%s, ", buf);
 		ipv6_string(buf, t->cur);
 		fprintf(to, "%s, %#" PRIx64 ", %d, %d }\n", buf,
-			t->delayed_start, (int)t->tmp, (int)t->done);
+			t->delayed_start, (int)t->bits, (int)t->done);
 	}
 	if (targets_i > ndump)
 		fprintf(to, "...\n");
@@ -150,25 +153,23 @@ int target_gen_finish_add(void)
 	if(targets_i == 0)
 		return -1;
 
-	// find "longest" target
-	uint64_t max = 0;
+	// find biggest target size (least bits in mask)
+	uint8_t min_bits = 128;
 	for(int i = 0; i < targets_i; i++) {
-		uint64_t tmp = 0, junk = 0;
-		progress_single(&targets[i], &tmp, &junk);
-		targets[i].tmp = count_mask_bits(&targets[i]);
-		if(tmp > max)
-			max = tmp;
+		targets[i].bits = count_mask_bits(&targets[i]);
+		if(targets[i].bits < min_bits)
+			min_bits = targets[i].bits;
 	}
-	if(TARGET_EVEN_SPREAD && max > 1) {
+	if(TARGET_EVEN_SPREAD && min_bits > 64 && min_bits != 128) {
+		const uint64_t nmax = UINT64_C(1) << (128 - min_bits);
 		// adjust starting point of other targets
 		for(int i = 0; i < targets_i; i++) {
-			uint64_t tmp = 0, junk = 0;
-			progress_single(&targets[i], &tmp, &junk);
-			if(tmp == max)
+			if(targets[i].bits == min_bits)
 				continue;
-			assert(max > tmp);
-			// set begin randomly between the first and last possible starting point
-			targets[i].delayed_start = rand64() % (max - tmp + 1);
+			assert(targets[i].bits > min_bits);
+			const uint64_t nthis = TARGET_ADDR_COUNT(&targets[i]);
+			// randomly between the first and last possible starting point
+			targets[i].delayed_start = rand64() % (nmax - nthis + 1);
 		}
 	}
 
@@ -356,26 +357,18 @@ int target_gen_sanity_check(void)
 	return 0;
 }
 
-static void shuffle(void *_buf, int stride, int n)
+static void shuffle(void *_buf, unsigned int stride, int n)
 {
 	char *buf = _buf;
+	char *tmp = calloc(1, stride);
 	for(int i = n-1; i > 0; i--) {
 		int j = rand() % (i+1);
 		// swap element i and j
-		for (int off = 0; off < stride; off++) {
-			char x = buf[stride * i + off];
-			buf[stride * i + off] = buf[stride * j + off];
-			buf[stride * j + off] = x;
-		}
+		memcpy(tmp, &buf[stride * i], stride);
+		memcpy(&buf[stride * i], &buf[stride * j], stride);
+		memcpy(&buf[stride * j], tmp, stride);
 	}
-}
-
-static int popcount(uint32_t x)
-{
-    int c = 0;
-    for (; x; x >>= 1)
-        c += x & 1;
-    return c;
+	free(tmp);
 }
 
 static void fill_cache(void)
@@ -389,7 +382,7 @@ static void fill_cache(void)
 			if(fgets(buf, sizeof(buf), targets_from) == NULL)
 				break;
 
-			trim_string(buf, " \t\r\n");
+			trim_space(buf);
 			if(buf[0] == '#' || buf[0] == '\0')
 				continue; // skip comments and empty lines
 
@@ -456,33 +449,44 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 
 static int count_mask_bits(const struct targetstate *t)
 {
+	enum {
+		M_SZ = sizeof(t->spec.mask),
+		ULL_SZ = sizeof(unsigned long long),
+	};
 	int b = 0;
-	for(int j = 0; j < 4; j++) {
-		uint32_t v;
-		memcpy(&v, &t->spec.mask[4*j], 4);
-		b += popcount(v);
+#if __has_builtin(__builtin_popcountll)
+	static_assert(M_SZ % ULL_SZ == 0, "");
+	for (int off = 0; off < M_SZ; off += ULL_SZ) {
+		unsigned long long x;
+		memcpy(&x, &t->spec.mask[off], ULL_SZ);
+		b += __builtin_popcountll(x);
 	}
+#else
+	for (int off = 0; off < M_SZ; off++) {
+		uint8_t x = t->spec.mask[off];
+		for (; x; x >>= 1)
+			b += x & 1;
+	}
+#endif
 	return b;
 }
 
 static void count_total(const struct targetstate *t, uint64_t *total, bool *overflowed)
 {
-	uint64_t one = 0, tmp = 0;
-	progress_single(t, &one, &tmp);
-	// if this target is larger than 2^64 all bits will be shifted off the end
-	if (one == 0) {
+	if (t->bits <= 64) { // larger than /64
 		*overflowed = true;
-	} else {
-#if __has_builtin(__builtin_add_overflow)
-		if (__builtin_add_overflow(one, *total, total))
-			*overflowed = true;
-#else
-		tmp = *total;
-		*total += one;
-		if (*total < tmp)
-			*overflowed = true;
-#endif
+		return;
 	}
+	uint64_t one = TARGET_ADDR_COUNT(t);
+#if __has_builtin(__builtin_add_overflow)
+	if (__builtin_add_overflow(one, *total, total))
+		*overflowed = true;
+#else
+	tmp = *total;
+	*total += one;
+	if (*total < tmp)
+		*overflowed = true;
+#endif
 }
 
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)

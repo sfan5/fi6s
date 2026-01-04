@@ -51,7 +51,7 @@ int strtol_simple(const char *str, int base); // parses number
 int strchr_count(const char *str, int c); // counts occurrences of c
 int realloc_if_needed(void **array, unsigned int elemsize,
 		unsigned int used, unsigned int *total); // reallocarray() wrapper for convenience
-void trim_string(char *buf, const char *trimchars); // trims any amount of specified chars from left and right
+void trim_space(char *buf); // trim whitespace from string buffer
 void set_thread_name(const char *name); // sets name of calling thread
 uint64_t rand64(void); // number with at least 60 bits of randomness
 uint64_t monotonic_ms(void); // monotonic clock (ms)

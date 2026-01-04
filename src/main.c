@@ -477,7 +477,7 @@ static int read_targets_from_file(const char *filename, int stream_targets)
 	while(fgets(buf, sizeof(buf), f) != NULL) {
 		struct targetspec t;
 
-		trim_string(buf, " \t\r\n");
+		trim_space(buf);
 		if(buf[0] == '#' || buf[0] == '\0')
 			continue; // skip comments and empty lines
 

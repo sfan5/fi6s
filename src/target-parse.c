@@ -98,19 +98,20 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 		strncpy_term(cur, p, next - p);
 
 		// FIXME: this will accept invalid addrs like :12::34:
-		if((i == 0 || i == 7) && strlen(cur) == 0)
+		if((i == 0 || i == 7) && !cur[0])
 			strncpy(cur, "0", 2); // zero compression can't be used on first or last element
-		if(strlen(cur) == 0) {
+		if(!cur[0]) {
 			// zero compression: an empty field fills up the missing zeroes
 			i += 8 - given;
 			goto next;
 		}
 
-		for(int j = 0; j < strlen(cur); j++) {
+		const int curlen = strlen(cur);
+		for(int j = 0; j < curlen; j++) {
 			if(cur[j] != 'x')
 				continue;
 			// if there's a wildcard nibble here unset bits in netmask and replace with 0
-			int bitpos = i*16 + (j + (4 - strlen(cur)))*4;
+			int bitpos = i*16 + (j + 4 - curlen)*4;
 			for(int k = bitpos; k < bitpos+4; k++) {
 				int off, bit;
 				SPLIT_BITPOS(k, &off, &bit);
@@ -122,8 +123,8 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 		int val = strtol_simple(cur, 16);
 		if(val == -1)
 			return -1;
-		uint16_t val_fixed = htobe16(val & 0xffff);
-		memcpy(&dst->addr[i*2], &val_fixed, 2);
+		dst->addr[i*2] = (val & 0xffff) >> 8;
+		dst->addr[i*2+1] = val & 0xff;
 
 		next:
 		if(*next == '\0')

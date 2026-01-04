@@ -395,45 +395,45 @@ static void fill_cache(void)
 		return;
 	}
 
+	int unfinished_max = targets_i;
 	while(1) {
-		int any = 0;
-		for(int i = 0; i < targets_i; i++) {
+		const int iter_max = unfinished_max;
+		// update unfinished_max along the way, for the next iteration
+		unfinished_max = 0;
+		for(int i = 0; i < iter_max; i++) {
 			if(targets[i].done)
 				continue;
+			unfinished_max = i + 1;
 			if(targets[i].delayed_start > 0) {
 				targets[i].delayed_start--;
 				continue;
 			}
 
-			any = 1;
 			next_addr(&targets[i], &cache[cache_size*16]);
 			cache_size++;
 			if(cache_size == TARGET_RANDOMIZE_SIZE)
 				goto out;
 		}
-		if(!any)
+		if(unfinished_max == 0)
 			goto out;
 	}
-	out:
+out:
 	return;
 }
 
 static void next_addr(struct targetstate *t, uint8_t *dst)
 {
-	int carry = 0;
 	// copy what we currently have into dst
 	for(int i = 0; i < 16; i++)
 		dst[i] = t->spec.addr[i] | t->cur[i];
-	// do manual addition on t->cur while ignoring positions set in t->spec.mask
-	int any = 0;
+	// do bitwise addition on t->cur while ignoring positions set in t->spec.mask
+	int carry = 1;
 	for(int i = 15; i >= 0; i--) {
 		for(unsigned int j = 1; j != (1 << 8); j <<= 1) {
 			if(t->spec.mask[i] & j)
 				continue;
-			any = 1;
 			if(t->cur[i] & j) {
 				t->cur[i] &= ~j; // unset & carry
-				carry = 1;
 			} else {
 				t->cur[i] |= j; // set & exit
 				carry = 0;
@@ -441,9 +441,9 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 			}
 		}
 	}
-	out:
-	// mark target as done if there's carry left over or the mask has all bits set
-	if(!any || carry == 1)
+out:
+	// mark target as done if there's carry left over
+	if(carry)
 		t->done = 1;
 }
 

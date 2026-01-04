@@ -487,10 +487,32 @@ static void count_total(const struct targetstate *t, uint64_t *total, bool *over
 	if (*total < tmp)
 		*overflowed = true;
 #endif
+
+	// FIXME: should have a built-in selftest instead of relying the CI to run
+	// past these asserts
+#ifndef NDEBUG
+	{
+		uint64_t tmp1 = 0, tmp2 = 0;
+		progress_single(t, &tmp1, &tmp2);
+		assert(tmp1 == one);
+	}
+#endif
 }
 
 static void progress_single(const struct targetstate *t, uint64_t *total, uint64_t *done)
 {
+	// shortcuts
+	if(t->bits == 128) {
+		(*total)++;
+		*done += t->done ? 1 : 0;
+		return;
+	} else if(t->done) {
+		uint64_t one = TARGET_ADDR_COUNT(t);
+		*total += one;
+		*done += one;
+		return;
+	}
+
 	uint64_t _total = 0, _done = 0;
 	for(int i = 0; i < 16; i++) {
 		for(unsigned int j = (1 << 7); j != 0; j >>= 1) {
@@ -503,8 +525,5 @@ static void progress_single(const struct targetstate *t, uint64_t *total, uint64
 		}
 	}
 	*total += _total + 1;
-	if(t->done) // cur wraps around to zero when the target is complete
-		*done += _total + 1;
-	else
-		*done += _done;
+	*done += _done;
 }

@@ -56,12 +56,6 @@ void set_thread_name(const char *name); // sets name of calling thread
 uint64_t rand64(void); // number with at least 60 bits of randomness
 uint64_t monotonic_ms(void); // monotonic clock (ms)
 
-#define strncpy_term(dst, src, n) /* like strncpy but forces null-termination, CALLER NEEDS TO ENSURE THAT NULL BYTE FITS! */ \
-	do { \
-		strncpy(dst, src, n); \
-		dst[n] = '\0'; \
-	} while(0)
-
 // UDP/TCP checksumming
 #define CHKSUM_INITIAL 0x0000
 uint32_t chksum(uint32_t sum, const void *p, unsigned int n);

@@ -3,7 +3,7 @@
 // Copyright (C) 2016 sfan5 <sfan5@live.de>
 
 #define _DEFAULT_SOURCE // htobe16
-#define _GNU_SOURCE // strchrnul, pthread_setname_np
+#define _GNU_SOURCE // pthread_setname_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,12 +42,11 @@ int parse_ports(const char *str, struct ports *dst)
 	const char *p = str;
 	int i = 0;
 	while(1) {
-		char cur[6];
+		char cur[6] = {0};
 		int j = 0;
 
 		while(*p && isdigit(*p) && j < 5)
 			cur[j++] = *(p++);
-		cur[j] = '\0';
 		j = strtol_simple(cur, 10);
 		if(j == -1)
 			return -1;
@@ -218,10 +217,9 @@ static int _parse_ipv6(const char *str, uint8_t *dst, int given)
 	const char *p = str;
 	int i = 0;
 	while(i < 8) {
-		char cur[5], *next = strchrnul(p, ':');
-		if(next - p > sizeof(cur) - 1)
-			return -1;
-		strncpy_term(cur, p, next - p);
+		char cur[5] = {0};
+		for(int j = 0; *p && *p != ':' && j < 4;)
+			cur[j++] = *(p++);
 
 		// FIXME: this will accept invalid addrs like :12::34:
 		if((i == 0 || i == 7) && !cur[0])
@@ -238,10 +236,12 @@ static int _parse_ipv6(const char *str, uint8_t *dst, int given)
 		dst[i*2] = (val & 0xffff) >> 8;
 		dst[i*2+1] = val & 0xff;
 
-		next:
-		if(*next == '\0')
+next:
+		if(*p == '\0')
 			break;
-		p = next + 1;
+		if(*p != ':')
+			return -1;
+		p++;
 		i++;
 	}
 
@@ -255,11 +255,11 @@ int parse_ipv6(const char *str, uint8_t *dst)
 	// special handling for ::1:2:3:4:5:6:7 and 1:2:3:4:5:6:7::
 	// this is some seriously retarded shit, WHO CAME UP WITH THIS??
 	if(given == 9) {
-		char buf[IPV6_STRING_MAX];
-		strncpy_term(buf, str, sizeof(buf) - 1);
+		char buf[IPV6_STRING_MAX] = {0};
+		strncpy(buf, str, sizeof(buf) - 1);
 		if(!strncmp(str, "::", 2))
 			buf[0] = '0';
-		else if(!strncmp(str + strlen(str) - 2, "::", 2))
+		else if(!strcmp(str + strlen(str) - 2, "::"))
 			buf[strlen(str) - 1] = '0';
 		return _parse_ipv6(buf, dst, 8);
 	}

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2016 sfan5 <sfan5@live.de>
 
-#define _GNU_SOURCE // strchrnul()
 #include <string.h>
 #include "os-endian.h"
 
@@ -17,6 +16,17 @@
 
 static int parse_wcnibble(const char *str, struct targetspec *dst);
 
+/// @param dstlen length of destination buffer (including NUL byte)
+/// @return could be copied without truncating?
+static inline bool try_strcpy(char *dst, int dstlen, const char *src, int srclen)
+{
+	if(srclen + 1 > dstlen)
+		return false;
+	memcpy(dst, src, srclen);
+	dst[srclen] = 0;
+	return true;
+}
+
 int target_parse(const char *str, struct targetspec *dst)
 {
 	if(strchr(str, 'x')) // wildcard nibble notation
@@ -30,9 +40,8 @@ int target_parse(const char *str, struct targetspec *dst)
 		memset(dst->mask, 0xff, 16);
 		return 0;
 	}
-	if(mask - str > sizeof(addr) - 1)
+	if(!try_strcpy(addr, sizeof(addr), str, mask - str))
 		return -1;
-	strncpy_term(addr, str, mask - str);
 	mask++;
 
 	if(parse_ipv6(addr, dst->addr) < 0)
@@ -41,9 +50,10 @@ int target_parse(const char *str, struct targetspec *dst)
 	if(strchr(mask, '-')) { // subnet range notation
 		char first[4], *second;
 		second = strchr(mask, '-');
-		if(!second || second - mask > sizeof(first) - 1)
+		if(!second)
 			return -1;
-		strncpy_term(first, mask, second - mask);
+		if(!try_strcpy(first, sizeof(first), mask, second - mask))
+			return -1;
 		second++;
 
 		int begin, end;
@@ -92,10 +102,9 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 	const char *p = str;
 	int i = 0;
 	while(i < 8) {
-		char cur[5], *next = strchrnul(p, ':');
-		if(next - p > sizeof(cur) - 1)
-			return -1;
-		strncpy_term(cur, p, next - p);
+		char cur[5] = {0};
+		for(int j = 0; *p && *p != ':' && j < 4;)
+			cur[j++] = *(p++);
 
 		// FIXME: this will accept invalid addrs like :12::34:
 		if((i == 0 || i == 7) && !cur[0])
@@ -126,10 +135,12 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 		dst->addr[i*2] = (val & 0xffff) >> 8;
 		dst->addr[i*2+1] = val & 0xff;
 
-		next:
-		if(*next == '\0')
+next:
+		if(*p == '\0')
 			break;
-		p = next + 1;
+		if(*p != ':')
+			return -1;
+		p++;
 		i++;
 	}
 

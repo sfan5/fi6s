@@ -40,10 +40,15 @@ SRC = \
 	tcp.c tcp-state.c udp.c icmp.c \
 	banner.c \
 	binary-write.c binary-read.c
-ifeq ($(FUZZ),)
+
+ifeq ($(FUZZ)$(BENCH),)
 SRC += main.c
 else
+ifeq ($(BENCH),)
 SRC += fuzz-$(FUZZ).c
+else
+SRC += bench-$(BENCH).c
+endif
 endif
 
 OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
@@ -51,7 +56,7 @@ OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC))))
 all: fi6s
 
 fi6s: $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS) $(LIBS)
+	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 obj/%.o: src/%.c src/*.h
 	$(CC) $(CFLAGS) -c $< -o $@

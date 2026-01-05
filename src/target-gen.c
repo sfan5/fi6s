@@ -43,7 +43,8 @@ static int cache_size;
 static FILE *targets_from;
 
 static struct targetstate *targets;
-static unsigned int targets_i, targets_size;
+static unsigned int targets_i /* = used */, targets_size;
+static unsigned int targets_last_i;
 #define REALLOC_TARGETS() \
 	realloc_if_needed((void**) &targets, sizeof(struct targetstate), targets_i, &targets_size)
 
@@ -395,12 +396,13 @@ static void fill_cache(void)
 		return;
 	}
 
-	int unfinished_max = targets_i;
-	while(1) {
-		const int iter_max = unfinished_max;
+	unsigned int unfinished_max = targets_i,
+		iter_min = targets_last_i;
+	do {
+		const unsigned int iter_max = unfinished_max;
 		// update unfinished_max along the way, for the next iteration
 		unfinished_max = 0;
-		for(int i = 0; i < iter_max; i++) {
+		for(unsigned int i = iter_min; i < iter_max; i++) {
 			if(targets[i].done)
 				continue;
 			unfinished_max = i + 1;
@@ -411,14 +413,14 @@ static void fill_cache(void)
 
 			next_addr(&targets[i], &cache[cache_size*16]);
 			cache_size++;
-			if(cache_size == TARGET_RANDOMIZE_SIZE)
-				goto out;
+			if(cache_size == TARGET_RANDOMIZE_SIZE) {
+				// remember index for next time, so we consider all targets evenly
+				targets_last_i = i+1;
+				return;
+			}
 		}
-		if(unfinished_max == 0)
-			goto out;
-	}
-out:
-	return;
+		iter_min = 0;
+	} while(unfinished_max > 0);
 }
 
 static inline uint64_t read_be64(const void *ptr)

@@ -199,7 +199,7 @@ int parse_mac(const char *str, uint8_t *dst)
 			cur[j++] = *(p++);
 		cur[j] = '\0';
 		j = strtol_simple(cur, 16);
-		if(j == -1)
+		if(j < 0)
 			return -1;
 		dst[i] = j & 0xff;
 		if(!*p && i != 5)
@@ -233,7 +233,7 @@ static int _parse_ipv6(const char *str, uint8_t *dst, int given)
 		}
 
 		int val = strtol_simple(cur, 16);
-		if(val == -1)
+		if(val < 0)
 			return -1;
 		dst[i*2] = (val & 0xffff) >> 8;
 		dst[i*2+1] = val & 0xff;

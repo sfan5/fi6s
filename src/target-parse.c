@@ -121,7 +121,7 @@ static int parse_wcnibble(const char *str, struct targetspec *dst)
 		}
 
 		int val = strtol_simple(cur, 16);
-		if(val == -1)
+		if(val < 0)
 			return -1;
 		dst->addr[i*2] = (val & 0xffff) >> 8;
 		dst->addr[i*2+1] = val & 0xff;

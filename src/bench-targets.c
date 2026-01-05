@@ -11,7 +11,7 @@
 #include "target.h"
 
 // adjust as needed
-#define BSZ 101
+#define BSZ 100
 
 #define REQUIRE(expr) do { if(!(expr)) { \
 	fprintf(stderr, "fail at %s:%d\n", __func__, __LINE__); __builtin_trap(); \

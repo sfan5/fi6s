@@ -421,30 +421,59 @@ out:
 	return;
 }
 
+static inline uint64_t read_be64(const void *ptr)
+{
+	uint64_t x;
+	memcpy(&x, ptr, 8);
+	return be64toh(x);
+}
+
+static inline void put_be64(void *ptr, const uint64_t v)
+{
+	uint64_t x = htobe64(v);
+	memcpy(ptr, &x, 8);
+}
+
 static void next_addr(struct targetstate *t, uint8_t *dst)
 {
-	// copy what we currently have into dst
+	/* assemble current address in dst */
 	for(int i = 0; i < 16; i++)
 		dst[i] = t->spec.addr[i] | t->cur[i];
-	// do bitwise addition on t->cur while ignoring positions set in t->spec.mask
-	int carry = 1;
-	for(int i = 15; i >= 0; i--) {
-		for(unsigned int j = 1; j != (1 << 8); j <<= 1) {
-			if(t->spec.mask[i] & j)
-				continue;
-			if(t->cur[i] & j) {
-				t->cur[i] &= ~j; // unset & carry
-			} else {
-				t->cur[i] |= j; // set & exit
-				carry = 0;
-				goto out;
-			}
+
+	/* increase address by one */
+	// Conceptually what we want to do here is discontigous addition with one
+	// e.g. 0b0001 mask 0b0110 + 1 = 0b1000
+	// A neat trick for that is to OR the mask and then add normally.
+	// Afterwards we need to remove the mask bits again, so the `addr | cur`
+	// above remains correct.
+
+	// Note: I tested __uint128_t for this too. GCCs code is extremely slow;
+	// clang is fine, but it's still slower than this 64-bit implementation.
+	// Note 2: reading the bytes as LE - or in any other order - would not
+	// make the results incorrect, just "randomize" them a little.
+	// However we want to keep the natural order.
+
+	uint64_t m0 = read_be64(t->spec.mask), m1 = read_be64(t->spec.mask + 8);
+	uint64_t c0 = read_be64(t->cur),       c1 = read_be64(t->cur + 8);
+
+	uint64_t s1 = m1 | c1;
+	if(s1 != UINT64_MAX) {
+		// bottom half increases
+		c1 = (s1 + 1) & ~m1;
+	} else {
+		c1 = 0;
+		uint64_t s0 = m0 | c0;
+		if(s0 != UINT64_MAX) {
+			// bottom half overflows, increase top half
+			c0 = (s0 + 1) & ~m0;
+		} else {
+			// both overflow
+			t->done = 1;
 		}
 	}
-out:
-	// mark target as done if there's carry left over
-	if(carry)
-		t->done = 1;
+
+	put_be64(t->cur,     c0);
+	put_be64(t->cur + 8, c1);
 }
 
 static int count_mask_bits(const struct targetstate *t)

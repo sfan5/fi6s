@@ -29,6 +29,7 @@ int binary_read_header(struct reader *r, FILE *f)
 {
 	struct file_header h;
 
+	memset(&h, 0, sizeof(h));
 	(void)fread(&h, sizeof(h), 1, f);
 	skip_align(f, sizeof(h));
 
@@ -51,10 +52,9 @@ int binary_read_header(struct reader *r, FILE *f)
 
 int binary_read_record(struct reader *r, struct rec_header *h)
 {
-	(void)fread(h, sizeof(*h), 1, r->file);
-	if(feof(r->file))
-		return -2;
-	skip_align(r->file, sizeof(*h));
+	int ret = fread(h, 1, sizeof(*h), r->file);
+	if(ret < sizeof(*h))
+		return ret == 0 ? -2 : -1;
 
 	r->record_size = h->size;
 	if(h->size < sizeof(*h))
@@ -76,7 +76,9 @@ int binary_read_record_data(struct reader *r, void *data)
 	}
 #endif
 
-	fread(data, r->record_size - sizeof(struct rec_header), 1, r->file);
+	uint32_t datasize = r->record_size - sizeof(struct rec_header);
+	if(fread(data, datasize, 1, r->file) != 1)
+		return -1;
 	skip_align(r->file, r->record_size);
 	r->record_size = 0;
 	return 0;

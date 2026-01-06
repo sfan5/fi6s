@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <inttypes.h>
 
 #include "scan.h"
@@ -18,7 +19,7 @@ static int show_closed, banners;
 static FILE *outfile;
 static struct outputdef outdef;
 
-#define RECORD_MAX_DATA 65535 // must be >= BANNER_MAX_LENGTH
+#define RECORD_MAX_DATA 64000 // must be >= BANNER_MAX_LENGTH
 
 void scan_reader_set_general(int _show_closed, int _banners)
 {
@@ -36,6 +37,10 @@ int scan_reader_main(FILE *infile)
 {
 	struct reader r;
 	if(binary_read_header(&r, infile) < 0)
+		return -1;
+
+	char *databuf = calloc(1, RECORD_MAX_DATA);
+	if(!databuf)
 		return -1;
 
 	outdef.begin(outfile);
@@ -59,23 +64,26 @@ int scan_reader_main(FILE *infile)
 				return -1;
 			}
 
-			char data[RECORD_MAX_DATA];
-			ret = binary_read_record_data(&r, data);
-			if(ret == -1)
+			ret = binary_read_record_data(&r, databuf);
+			if(ret == -1) {
+				log_error("Record data truncated.");
 				return -1;
+			}
 
 			if(!banners)
 				continue;
 			if(!outdef.raw) {
 				uint8_t ip_type = proto == OUTPUT_PROTO_TCP ? IP_TYPE_TCP : IP_TYPE_UDP;
-				banner_postprocess(ip_type, h.port, data, &data_length);
+				banner_postprocess(ip_type, h.port, databuf, &data_length);
 			}
-			outdef.output_banner(outfile, h.timestamp, h.addr, proto, h.port, data, data_length);
+			outdef.output_banner(outfile, h.timestamp, h.addr, proto, h.port, databuf, data_length);
 		} else {
 			if(outdef.raw || show_closed || status != OUTPUT_STATUS_CLOSED)
 				outdef.output_status(outfile, h.timestamp, h.addr, proto, h.port, h.ttl, status);
 		}
 	}
 	outdef.end(outfile);
+
+	free(databuf);
 	return 0;
 }

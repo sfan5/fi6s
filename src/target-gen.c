@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <inttypes.h>
+#include "os-endian.h"
 #include <assert.h>
 
 #include "target.h"

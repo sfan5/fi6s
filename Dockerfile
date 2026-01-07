@@ -1,5 +1,5 @@
 FROM alpine:edge
-LABEL repository "https://github.com/sfan5/fi6s"
+LABEL repository="https://github.com/sfan5/fi6s"
 
 RUN apk --update \
         --no-cache \

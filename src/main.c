@@ -503,11 +503,11 @@ static void usage(void)
 	static const struct { const char *l, *r; } lines[] = {
 		{"General options:", NULL},
 		{"--help", "Show this text"},
-		{"--list-protocols", "List TCP/UDP protocols supported by fi6s for banner grabbing"},
+		{"--list-protocols", "List TCP/UDP protocols supported by fi6s for banner collection"},
 		{"--readscan <file>", "Read specified binary scan from <file> instead of performing a scan"},
 		{"--print-network-settings", "Print (auto-detected) network settings and exit"},
 		{"--print-hosts", "Print all hosts to be scanned and exit (don't scan)"},
-		{"--print-summary", "Print summary of hosts to be scanned and exit"},
+		{"--print-summary", "Print summary information about the scan and exit"},
 		{"Network settings:", NULL},
 		{"--interface <iface>", "Use <iface> for capturing and sending packets"},
 		{"--source-mac <mac>", "Set Ethernet layer source to <mac>"},

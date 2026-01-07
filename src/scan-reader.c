@@ -43,6 +43,8 @@ int scan_reader_main(FILE *infile)
 	if(!databuf)
 		return -1;
 
+	bool any = false, b_only = true, c_only = true;
+
 	outdef.begin(outfile);
 	while(1) {
 		struct rec_header h;
@@ -53,6 +55,7 @@ int scan_reader_main(FILE *infile)
 			log_error("Encountered invalid record header.");
 			return -1;
 		}
+		any = true;
 
 		int proto = h.proto_status >> 4, status = h.proto_status & 0xf;
 
@@ -72,17 +75,28 @@ int scan_reader_main(FILE *infile)
 
 			if(!banners)
 				continue;
+			c_only = false;
 			if(!outdef.raw) {
 				uint8_t ip_type = proto == OUTPUT_PROTO_TCP ? IP_TYPE_TCP : IP_TYPE_UDP;
 				banner_postprocess(ip_type, h.port, databuf, &data_length);
 			}
 			outdef.output_banner(outfile, h.timestamp, h.addr, proto, h.port, databuf, data_length);
 		} else {
-			if(outdef.raw || show_closed || status != OUTPUT_STATUS_CLOSED)
+			bool show = outdef.raw || show_closed || status != OUTPUT_STATUS_CLOSED;
+			b_only = false;
+			c_only &= !show;
+			if(show)
 				outdef.output_status(outfile, h.timestamp, h.addr, proto, h.port, h.ttl, status);
 		}
 	}
 	outdef.end(outfile);
+
+	if(!any)
+		log_raw("Note: the scan file was empty.");
+	else if(!banners && b_only) // relevant for UDP
+		log_raw("Note: the scan file wasn't empty, but all records were filtered. Try with --banners.");
+	else if(c_only) // relevant for TCP
+		log_raw("Note: the scan file wasn't empty, but all records were filtered. Try with --show-closed.");
 
 	free(databuf);
 	return 0;

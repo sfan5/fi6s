@@ -18,7 +18,10 @@ try () {
 	((ntest+=1))
 	echo
 	echo "-> fi6s $*"
-	if [ -n "$nostderr" ]; then
+	if [ -n "$notee" ]; then
+		"$olddir/fi6s" "${args[@]}" "$@" >out.txt
+		wc -l out.txt
+	elif [ -n "$nostderr" ]; then
 		"$olddir/fi6s" "${args[@]}" "$@" | tee out.txt
 	else
 		"$olddir/fi6s" "${args[@]}" "$@" 2>&1 | tee out.txt
@@ -88,6 +91,15 @@ sort out.txt >2 && mv 2 out.txt
 ) | sort >expected_out.txt
 
 cmp_out expected_out.txt
+
+##
+
+notee=1 try --print-hosts 2c0f::xxxx
+check_out "^2c0f::$"
+check_out "^2c0f::1$"
+check_out "^2c0f::7fff$"
+check_out "^2c0f::fffe$"
+check_out "^2c0f::ffff$"
 
 ##
 

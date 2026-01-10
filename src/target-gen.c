@@ -398,11 +398,12 @@ static void fill_cache(void)
 	}
 
 	unsigned int unfinished_max = targets_i,
-		iter_min = targets_last_i;
+		iter_min = (targets_last_i + 1) % targets_i;
 	do {
 		const unsigned int iter_max = unfinished_max;
 		// update unfinished_max along the way, for the next iteration
 		unfinished_max = 0;
+		assert(iter_min < iter_max);
 		for(unsigned int i = iter_min; i < iter_max; i++) {
 			if(targets[i].done)
 				continue;
@@ -416,7 +417,7 @@ static void fill_cache(void)
 			cache_size++;
 			if(cache_size == TARGET_RANDOMIZE_SIZE) {
 				// remember index for next time, so we consider all targets evenly
-				targets_last_i = i+1;
+				targets_last_i = i;
 				return;
 			}
 		}

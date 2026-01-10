@@ -94,12 +94,21 @@ cmp_out expected_out.txt
 
 ##
 
-notee=1 try --print-hosts 2c0f::xxxx
-check_out "^2c0f::$"
-check_out "^2c0f::1$"
-check_out "^2c0f::7fff$"
-check_out "^2c0f::fffe$"
-check_out "^2c0f::ffff$"
+for opt in 1 0; do
+
+	notee=1 try --randomize-hosts $opt --print-hosts 2c0f::xxxx
+	check_out "^2c0f::$"
+	check_out "^2c0f::1$"
+	check_out "^2c0f::7fff$"
+	check_out "^2c0f::fffe$"
+	check_out "^2c0f::ffff$"
+
+	if [ $(wc -l <out.txt) -ne $(sort -u out.txt | wc -l) ]; then
+		echo "duplicates found!"
+		exit 1
+	fi
+
+done
 
 ##
 

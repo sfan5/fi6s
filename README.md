@@ -136,3 +136,16 @@ This property can be useful in practice, since some routers will accept SNMP or
 DNS queries on the zero network address, but answer with their primary IPv6.
 
 Example: scan `3fff:1234:1234:44xx::` -> response from `3fff:1234:1234:44a3:e2a:86ff:fe12:3456`
+
+### Target randomization
+
+The way fi6s randomizes the scanned IPs (`--randomize-hosts 1`, which is the default)
+is not perfect.
+
+It will:
+* shuffle IPs in batches of 8192
+* evenly distribute multiple targets over the duration of the scan (like round-robin)
+* however still traverse subnets *sequentially*
+
+For example if you scan `3fff::/108` the order of `3fff::1`, `3fff::20` and `3fff::300` will be random.
+But all addresses in `3fff::0:*` will be scanned before `3fff::1:*`, before `3fff::2:*` and so on.

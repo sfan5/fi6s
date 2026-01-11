@@ -57,5 +57,9 @@ int main(int argc, char *argv[])
 	printf("time %.2fs\n", secs);
 	printf("speed %ldk/s\n", (long)(naddr / secs) / 1000);
 
+	if(target_gen_progress() <= 0.999f) {
+		printf("DID NOT FINISH?!\n");
+		return 1;
+	}
 	return 0;
 }

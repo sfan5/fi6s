@@ -401,8 +401,9 @@ static void fill_cache(void)
 		iter_min = (targets_last_i + 1) % targets_i;
 	do {
 		const unsigned int iter_max = unfinished_max;
-		// update unfinished_max along the way, for the next iteration
-		unfinished_max = 0;
+		// update unfinished_max along the way, for the next iteration.
+		// take the targets we haven't looked at into account when iterating partially.
+		unfinished_max = iter_min;
 		assert(iter_min < iter_max);
 		for(unsigned int i = iter_min; i < iter_max; i++) {
 			if(targets[i].done)
@@ -423,6 +424,12 @@ static void fill_cache(void)
 		}
 		iter_min = 0;
 	} while(unfinished_max > 0);
+
+	// if we get here, we must be done
+	for(unsigned int i = 0; i < targets_i; i++) {
+		assert(targets[i].done);
+		assert(targets[i].delayed_start == 0);
+	}
 }
 
 static inline uint64_t read_be64(const void *ptr)

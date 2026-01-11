@@ -112,6 +112,22 @@ done
 
 ##
 
+# differing sizes and bigger than the internal buffer
+printf '%s\n' >in.txt \
+	f00::x f01::xx f02::xxx f03::xxxx
+
+for opt in 1 0; do
+
+	notee=1 try --randomize-hosts $opt --print-hosts @in.txt
+	check_out "^f00::2$"
+	check_out "^f01::24$"
+	check_out "^f02::246$"
+	check_out "^f03::2468$"
+
+done
+
+##
+
 try --icmp 3ffe::/48
 check_out "tremendous amount of time"
 

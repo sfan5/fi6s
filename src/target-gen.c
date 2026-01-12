@@ -105,7 +105,7 @@ void target_gen_fini(void)
 {
 	free(cache);
 	free(targets);
-	if(mode_streaming)
+	if(targets_from)
 		fclose(targets_from);
 }
 

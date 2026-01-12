@@ -85,6 +85,7 @@ void scan_set_network(const uint8_t *_source_addr, int _source_port, uint8_t _ip
 void scan_set_output(FILE *_outfile, const struct outputdef *_outdef)
 {
 	outfile = _outfile;
+	assert(_outdef);
 	memcpy(&outdef, _outdef, sizeof(struct outputdef));
 }
 

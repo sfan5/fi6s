@@ -71,23 +71,23 @@ int main(int argc, char *argv[])
 		stream_targets = 0;
 	enum operating_mode mode;
 	uint8_t ip_type, source_mac[6], router_mac[6], source_addr[16];
-	char *interface;
+	char *interface, *outfile;
 	struct ports ports;
-	FILE *outfile, *readscan;
+	FILE *readscan;
 	const struct outputdef *outdef;
 
 	mode = M_SCAN;
 	ip_type = IP_TYPE_TCP;
 	interface = NULL; // automatically picked
-	outfile = stdout;
-	outdef = NULL;
+	outfile = NULL; // stdout
+	readscan = NULL;
+	outdef = NULL; // defaults to 'list'
 
 	srand(time(NULL) - (getpid() * argc) + monotonic_ms());
 	memset(source_mac, 0xff, 6);
 	memset(router_mac, 0xff, 6);
 	memset(source_addr, 0xff, 16);
 	init_ports(&ports);
-	readscan = NULL;
 
 	while(1) {
 		int c = getopt_long(argc, argv, "hp:o:qbu", long_options, NULL);
@@ -120,6 +120,7 @@ int main(int argc, char *argv[])
 				break;
 
 			case 2002:
+				free(interface);
 				interface = strdup(optarg);
 				break;
 			case 2003:
@@ -207,27 +208,10 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				break;
-			case 'o': {
-				FILE *f = strcmp(optarg, "-") == 0 ? stdout : fopen(optarg, "wb");
-				if(!f) {
-					perror("open output file");
-					return 1;
-				}
-				char *dot = find_dot(optarg);
-				if(!outdef && dot) {
-					const char *suggest = NULL;
-					if(!strcmp(dot+1, "bin"))
-						suggest = "binary";
-					else if(!strcmp(dot+1, "json"))
-						suggest = "json";
-					if(suggest) {
-						log_warning("It looks like you might want a different "
-							"output format, try --output-format %s.", suggest);
-					}
-				}
-				outfile = f;
+			case 'o':
+				free(outfile);
+				outfile = strdup(optarg);
 				break;
-			}
 			case 'q':
 				quiet = 1;
 				break;
@@ -242,9 +226,6 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
-
-	if(!outdef)
-		outdef = &output_list;
 
 	int max_args = 1;
 	if(mode == M_READSCAN) {
@@ -317,10 +298,38 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	FILE *outfile_f = NULL;
+	if(mode == M_READSCAN || mode == M_SCAN) {
+		if(!outfile || !strcmp(outfile, "-"))
+			outfile_f = stdout;
+		else
+			outfile_f = fopen(outfile, "wb");
+		if(!outfile_f) {
+			perror("open output file");
+			return 1;
+		}
+		char *dot = find_dot(outfile);
+		if(!outdef && dot) {
+			const char *suggest = NULL;
+			if(!strcmp(dot+1, "bin"))
+				suggest = "binary";
+			else if(!strcmp(dot+1, "json"))
+				suggest = "json";
+			if(suggest) {
+				log_warning("It looks like you might want a different "
+					"output format, try --output-format %s.", suggest);
+			}
+		}
+
+		// now also apply the default outdef
+		if(!outdef)
+			outdef = &output_list;
+	}
+
 	int r;
 	if(mode == M_READSCAN) {
 		scan_reader_set_general(show_closed, banners);
-		scan_reader_set_output(outfile, outdef);
+		scan_reader_set_output(outfile_f, outdef);
 		r = scan_reader_main(readscan) < 0 ? 1 : 0;
 	} else if(mode == M_PRINT_HOSTS) {
 		uint8_t addr[16];
@@ -445,35 +454,35 @@ int main(int argc, char *argv[])
 			rawsock_ip_settings(source_addr, ttl);
 			scan_set_general(&ports, max_rate, show_closed, banners);
 			scan_set_network(source_addr, source_port, ip_type);
-			scan_set_output(outfile, outdef);
+			scan_set_output(outfile_f, outdef);
 			r = scan_main(interface, quiet) < 0 ? 1 : 0;
 		}
 	}
 
-	if (interface)
-		free(interface);
 	target_gen_fini();
-	fclose(outfile);
-	if(mode == M_READSCAN)
+	free(interface);
+	free(outfile);
+	if(outfile_f)
+		fclose(outfile_f);
+	if(readscan)
 		fclose(readscan);
 	return r;
 }
 
 static int read_targets_from_file(const char *filename, int stream_targets)
 {
-	FILE *f;
-	char buf[256];
-	f = fopen(filename, "r");
+	FILE *f = fopen(filename, "r");
 	if(!f) {
 		perror("open target list");
 		return -1;
 	}
 
 	if(stream_targets) {
-		target_gen_set_streaming(f);
+		target_gen_set_streaming(f); // takes ownership
 		return 0;
 	}
 
+	char buf[256];
 	while(fgets(buf, sizeof(buf), f) != NULL) {
 		struct targetspec t;
 
@@ -591,6 +600,8 @@ static inline bool is_all_ff(const uint8_t *buf, int len)
 
 static inline char *find_dot(char *str)
 {
+	if(!str)
+		return NULL;
 	char *p = str + strlen(str);
 	do {
 		if(*p == '/')

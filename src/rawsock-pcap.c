@@ -60,9 +60,10 @@ int rawsock_has_ethernet_headers(void)
 	return linktype == DLT_EN10MB;
 }
 
-#define snprintf_append(buffer, format, ...) do { \
-		int __sl = strlen(buffer); \
-		snprintf(&(buffer)[__sl], sizeof(buffer) - __sl - 1, format, __VA_ARGS__); \
+#define snprintf_append(buffer, fmt, ...) do { \
+		unsigned int buffer_l = strlen(buffer); \
+		if(buffer_l < sizeof(buffer)) \
+			snprintf(&(buffer)[buffer_l], sizeof(buffer) - buffer_l, fmt, __VA_ARGS__); \
 	} while(0)
 
 int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dstport)
@@ -70,18 +71,39 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 	char fstr[128];
 	struct bpf_program fp;
 
+	// reference: <https://www.tcpdump.org/manpages/pcap-filter.7.html>
+
+	const char *proto = NULL;
+	if(flags & RAWSOCK_FILTER_IPTYPE) {
+		if(iptype == IP_TYPE_TCP)
+			proto = "tcp";
+		else if(iptype == IP_TYPE_UDP)
+			proto = "udp";
+		else if(iptype == IP_TYPE_ICMPV6)
+			proto = "icmp6";
+		else
+			assert(false);
+	}
+
+	// As of 1.10.6 libpcap does not always seem to optimize checking the L3
+	// protocol so that adding 'and dst port xxxx' to an expression that already
+	// implies udp will result in an extra comparison against the protocol byte.
+	// Using 'udp dst port xxxx' avoid this.
+	if(proto && (flags & RAWSOCK_FILTER_DSTPORT))
+		flags &= ~RAWSOCK_FILTER_IPTYPE;
+
 	strncpy(fstr, "ip6", sizeof(fstr));
 	if(flags & RAWSOCK_FILTER_IPTYPE) {
-		char *tmp;
-		if(iptype == IP_TYPE_TCP)
-			tmp = "tcp";
-		else if(iptype == IP_TYPE_UDP)
-			tmp = "udp";
-		else if(iptype == IP_TYPE_ICMPV6)
-			tmp = "icmp6";
+		snprintf_append(fstr, " and %s", proto);
+	}
+	// Also libpacp doesn't reorder the conditions so check the port first,
+	// which is much more likely to produce an early-exit case.
+	if(flags & RAWSOCK_FILTER_DSTPORT) {
+		assert(dstport > 0);
+		if(proto)
+			snprintf_append(fstr, " and %s dst port %d", proto, dstport);
 		else
-			return -1;
-		snprintf_append(fstr, " and %s", tmp);
+			snprintf_append(fstr, " and dst port %d", dstport);
 	}
 	if(flags & RAWSOCK_FILTER_DSTADDR) {
 		char tmp[IPV6_STRING_MAX];
@@ -89,16 +111,14 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 		ipv6_string(tmp, dstaddr);
 		snprintf_append(fstr, " and dst %s", tmp);
 	}
-	if(flags & RAWSOCK_FILTER_DSTPORT) {
-		assert(dstport > 0);
-		snprintf_append(fstr, " and dst port %d", dstport);
-	}
 
-	log_debug("pcap filter: \"%s\"", fstr);
-	if(pcap_compile(handle, &fp, fstr, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+	if(pcap_compile(handle, &fp, fstr, 1, PCAP_NETMASK_UNKNOWN) == -1) {
 		pcap_perror(handle, "pcap_compile");
+		log_raw("Filter expression was \"%s\"", fstr);
 		return -1;
 	}
+	log_debug("filter: \"%s\" (%d insns)", fstr, fp.bf_len);
+
 	// can't set filter on dead handle
 	if(!dumper) {
 		int r = pcap_setfilter(handle, &fp);

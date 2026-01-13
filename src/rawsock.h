@@ -34,7 +34,7 @@ struct frame_ip {
 		traffic2:4;
 	uint16_t flow2;
 	uint16_t len; // Payload length
-	uint8_t next; // Type of next header (TCP or UDP)
+	uint8_t next; // Type of next header (TCP, UDP, ...)
 	uint8_t ttl; // Hop limit
 	uint8_t src[16]; // Source Address
 	uint8_t dest[16]; // Destination Address

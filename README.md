@@ -111,11 +111,15 @@ the network environment. These do not impact typical usage at all but are listed
 here for completeness.
 
 This means fi6s may not perform as expected or outright not work if:
-* you have a non-trivial routing table (it will be ignored. fi6s expects a single gateway)
-* you are scanning targets in the local network (fi6s does not do neighbor discovery)
+* you have a non-trivial routing table
+    - it will be ignored. fi6s expects a single gateway
+* you are scanning targets in the local network
+    - fi6s does not do neighbor discovery
 * you have a connection-tracking firewall
+    - it will likely be overwhelmed by the amount of "connections"
 * your IP or router's MAC changes mid-scan ¯\\\_(ツ)_/¯
 * your network has consistent packet loss
+* any IPv6 extension headers are in use by the target (this includes fragmentation)
 
 For banner collection note that fi6s does not come with anything resembling a real TCP
 stack. It merely supports sending one query and reading response data that follows.

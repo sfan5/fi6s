@@ -14,7 +14,7 @@
 #include "banner.h" // banner_postprocess
 #include "rawsock.h" // IP_TYPE_{TCP,UDP}
 
-static int show_closed, banners;
+static bool show_closed, banners;
 //
 static FILE *outfile;
 static struct outputdef outdef;

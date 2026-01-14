@@ -23,6 +23,25 @@
 #include "icmp.h"
 #include "banner.h"
 
+// for convenience
+#ifndef u_int
+typedef unsigned int u_int;
+#endif
+
+#if __has_builtin(__builtin_expect)
+// "unlikely"
+#define unl(expr) __builtin_expect((expr), 0)
+#else
+#define unl(expr) expr
+#endif
+
+enum {
+	FULL_TCP_SIZE  = FRAME_ETH_SIZE + FRAME_IP_SIZE +  TCP_HEADER_SIZE,
+	FULL_UDP_SIZE  = FRAME_ETH_SIZE + FRAME_IP_SIZE +  UDP_HEADER_SIZE,
+	FULL_ICMP_SIZE = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE,
+};
+
+// status_bits:
 enum {
 	SEND_FINISHED 	  = (1 << 0),
 	ERROR_SEND_THREAD = (1 << 1),
@@ -33,8 +52,8 @@ static uint8_t source_addr[16];
 static int source_port;
 //
 static struct ports ports;
-static unsigned int max_rate;
-static int show_closed, banners;
+static u_int max_rate;
+static bool show_closed, banners;
 static uint8_t ip_type;
 //
 static FILE *outfile;
@@ -50,17 +69,17 @@ static void *send_thread_udp(void *unused);
 static void *send_thread_icmp(void *unused);
 
 static void *recv_thread(void *unused);
-static void recv_handler(uint64_t ts, int len, const uint8_t *packet);
-static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
-static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
-static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr);
+static void recv_handler(uint64_t ts, u_int len, const uint8_t *packet);
+static void recv_handler_tcp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr);
+static void recv_handler_udp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr);
+static void recv_handler_icmp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr);
 
 #if ATOMIC_INT_LOCK_FREE != 2
-#warning Non lock-free atomic types will severely affect performance.
+#warning Non lock-free atomic types will probably reduce performance.
 #endif
 
 #define RATE_CONTROL() do { \
-	if(atomic_fetch_add(&pkts_sent, 1) >= max_rate) { \
+	if(unl(atomic_fetch_add(&pkts_sent, 1) >= max_rate)) { \
 		do usleep(1000); while(atomic_load(&pkts_sent) != 0); \
 	} \
 	} while(0)
@@ -70,7 +89,7 @@ static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const
 void scan_set_general(const struct ports *_ports, int _max_rate, int _show_closed, int _banners)
 {
 	memcpy(&ports, _ports, sizeof(struct ports));
-	max_rate = _max_rate < 0 ? UINT_MAX : _max_rate - 1;
+	max_rate = _max_rate <= 0 ? UINT_MAX : (_max_rate - 1);
 	show_closed = _show_closed;
 	banners = _banners;
 }
@@ -139,13 +158,13 @@ int scan_main(const char *interface, int quiet)
 	// Stats & progress watching
 	unsigned char cur_status = 0;
 	while(1) {
-		unsigned int cur_sent, cur_recv;
+		u_int cur_sent, cur_recv;
 		// (used for rate control)
 		cur_sent = atomic_exchange(&pkts_sent, 0);
 		cur_recv = atomic_exchange(&pkts_recv, 0);
 		if(!quiet) {
 			float progress = target_gen_progress();
-			unsigned int tcp_sent = 0;
+			u_int tcp_sent = 0;
 			char tmp[10] = {'?', '?', '?', 0};
 			if(progress >= 0.0f)
 				snprintf(tmp, sizeof(tmp), "%3d", (int) (progress*100));
@@ -178,8 +197,8 @@ int scan_main(const char *interface, int quiet)
 	if(banners && ip_type == IP_TYPE_TCP)
 		scan_responder_finish();
 	if(!quiet && !cur_status) {
-		unsigned int cur_recv = atomic_exchange(&pkts_recv, 0);
-		unsigned int tcp_sent = 0;
+		u_int cur_recv = atomic_exchange(&pkts_recv, 0);
+		u_int tcp_sent = 0;
 		if(banners && ip_type == IP_TYPE_TCP) {
 			scan_responder_stats(&tcp_sent);
 			fprintf(stderr, "rcv:%5u tcp:%5u\n", cur_recv, tcp_sent);
@@ -200,7 +219,7 @@ err:
 	goto ret;
 }
 
-static bool calc_bps(char *dst, unsigned int dstsize, uint64_t m1, uint64_t m2)
+static bool calc_bps(char *dst, u_int dstsize, uint64_t m1, uint64_t m2)
 {
 	uint64_t bps;
 #if __has_builtin(__builtin_mul_overflow)
@@ -222,11 +241,11 @@ static bool calc_bps(char *dst, unsigned int dstsize, uint64_t m1, uint64_t m2)
 
 void scan_print_summary(const struct ports *ports, int max_rate, int banners, uint8_t ip_type)
 {
-	unsigned int payload_min = 9999, payload_max = 0;
+	u_int payload_min = 9999, payload_max = 0;
 	if(ip_type == IP_TYPE_TCP) {
-		payload_min = payload_max = TCP_HEADER_SIZE;
+		payload_min = payload_max = FULL_TCP_SIZE;
 	} else if(ip_type == IP_TYPE_UDP && !banners) {
-		payload_min = payload_max = UDP_HEADER_SIZE;
+		payload_min = payload_max = FULL_UDP_SIZE;
 	} else if(ip_type == IP_TYPE_UDP) {
 		// Need to know actual ports to know payload size
 		if(!validate_ports(ports))
@@ -234,19 +253,17 @@ void scan_print_summary(const struct ports *ports, int max_rate, int banners, ui
 		struct ports_iter it;
 		ports_iter_begin(ports, &it);
 		while(ports_iter_next(&it) == 1) {
-			unsigned int len = 0;
+			u_int len = 0;
 			banner_get_query(IP_TYPE_UDP, it.val, &len);
-			len += UDP_HEADER_SIZE;
+			len += FULL_UDP_SIZE;
 			if(len < payload_min)
 				payload_min = len;
 			if(len > payload_max)
 				payload_max = len;
 		}
 	} else if(ip_type == IP_TYPE_ICMPV6) {
-		payload_min = payload_max = ICMP_HEADER_SIZE;
+		payload_min = payload_max = FULL_ICMP_SIZE;
 	}
-	payload_min += FRAME_ETH_SIZE + FRAME_IP_SIZE;
-	payload_max += FRAME_ETH_SIZE + FRAME_IP_SIZE;
 
 	if(payload_min == payload_max) {
 		printf("Scanning will send packets with %u octets (incl. Ethernet and IP headers).\n",
@@ -273,7 +290,7 @@ void scan_print_summary(const struct ports *ports, int max_rate, int banners, ui
 
 static void *send_thread_tcp(void *unused)
 {
-	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE];
+	uint8_t _Alignas(uint32_t) packet[FULL_TCP_SIZE];
 	uint8_t dstaddr[16];
 	struct ports_iter it;
 
@@ -316,7 +333,7 @@ err:
 
 static void *send_thread_udp(void *unused)
 {
-	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + BANNER_QUERY_MAX_LENGTH];
+	uint8_t _Alignas(uint32_t) packet[FULL_UDP_SIZE + BANNER_QUERY_MAX_LENGTH];
 	uint8_t dstaddr[16];
 	struct ports_iter it;
 
@@ -347,7 +364,7 @@ static void *send_thread_udp(void *unused)
 
 		uint16_t dstport = it.val;
 		udp_modify(UDP_HEADER(packet), source_port==-1?source_port_rand():source_port, dstport);
-		unsigned int dlen = 0;
+		u_int dlen = 0;
 		if(banners) {
 			const char *payload = banner_get_query(IP_TYPE_UDP, dstport, &dlen);
 			if(payload && dlen > 0)
@@ -357,7 +374,7 @@ static void *send_thread_udp(void *unused)
 		}
 
 		udp_checksum(IP_FRAME(packet), UDP_HEADER(packet), dlen);
-		rawsock_send(packet, FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE + dlen);
+		rawsock_send(packet, FULL_UDP_SIZE + dlen);
 
 		RATE_CONTROL();
 	}
@@ -371,7 +388,7 @@ err:
 
 static void *send_thread_icmp(void *unused)
 {
-	uint8_t _Alignas(uint32_t) packet[FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE];
+	uint8_t _Alignas(uint32_t) packet[FULL_ICMP_SIZE];
 	uint8_t dstaddr[16];
 
 	(void) unused;
@@ -420,16 +437,15 @@ static void *recv_thread(void *unused)
 	return NULL;
 }
 
-static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
+static void recv_handler(uint64_t ts, u_int len, const uint8_t *packet)
 {
 	int v;
 	const uint8_t *csrcaddr;
 
 	atomic_fetch_add(&pkts_recv, 1);
 
-	// decode
 	if(rawsock_has_ethernet_headers()) {
-		if(len < FRAME_ETH_SIZE)
+		if(unl(len < FRAME_ETH_SIZE))
 			goto perr;
 		rawsock_eth_decode(ETH_FRAME(packet), &v);
 	} else {
@@ -437,7 +453,7 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 		packet -= FRAME_ETH_SIZE; // FIXME: convenient but horrible hack
 		len += FRAME_ETH_SIZE;
 	}
-	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
+	if(unl(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE))
 		goto perr;
 	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);
 
@@ -458,11 +474,11 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 #endif
 }
 
-static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+static void recv_handler_tcp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
-	if(ip_type != IP_TYPE_TCP)
+	if(unl(ip_type != IP_TYPE_TCP))
 		goto perr;
-	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
+	if(unl(len < FULL_TCP_SIZE))
 		goto perr;
 
 	// Output stuff
@@ -485,11 +501,11 @@ static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const 
 #endif
 }
 
-static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+static void recv_handler_udp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
-	if(ip_type != IP_TYPE_UDP)
+	if(unl(ip_type != IP_TYPE_UDP))
 		goto perr;
-	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE)
+	if(unl(len < FULL_UDP_SIZE))
 		goto perr;
 
 	int v;
@@ -502,7 +518,7 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 		return;
 	}
 
-	uint32_t plen = len - (FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE);
+	uint32_t plen = len - FULL_UDP_SIZE;
 	if(plen == 0)
 		return;
 	else if(plen > BANNER_MAX_LENGTH)
@@ -520,20 +536,16 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 #endif
 }
 
-enum {
-	FULL_ICMP_SIZE = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE,
-};
-
 #define INNER_IP_FRAME(buf) ( (const struct frame_ip*) &(buf)[FULL_ICMP_SIZE] )
 #define INNER_UDP_HEADER(buf) ( (const struct udp_header*) &(buf)[FULL_ICMP_SIZE + FRAME_IP_SIZE] )
 
-static void handle_icmp_error(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
 	// (detection of closed UDP ports only so far)
-	if(ip_type != IP_TYPE_UDP)
+	if(unl(ip_type != IP_TYPE_UDP))
 		goto perr;
-	const int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE;
-	if(len < minlen)
+	const u_int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE;
+	if(unl(len < minlen))
 		goto perr;
 
 	// Note: the destination ip/port and protocol type are already checked
@@ -570,17 +582,16 @@ static void handle_icmp_error(uint64_t ts, int len, const uint8_t *packet, const
 #undef INNER_IP_FRAME
 #undef INNER_UDP_HEADER
 
-static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+static void recv_handler_icmp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
-	const int minlen = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE;
-	if(len < minlen)
+	if(unl(len < FULL_ICMP_SIZE))
 		goto perr;
 
 	if(ICMP_HEADER(packet)->type < 128)
 		return handle_icmp_error(ts, len, packet, csrcaddr);
 
 	// handling for icmp echo scans follows:
-	if(len != minlen)
+	if(len != FULL_ICMP_SIZE)
 		return;
 	if(ICMP_HEADER(packet)->type != 129) // Echo Reply
 		return;

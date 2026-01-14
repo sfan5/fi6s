@@ -56,7 +56,7 @@ struct pseudo_header {
 	uint8_t ipproto;
 } __attribute__((packed));
 
-typedef void (*rawsock_callback)(uint64_t /* timestamp */, int /* length */, const uint8_t* /* packet */);
+typedef void (*rawsock_callback)(uint64_t /* timestamp */, unsigned int /* length */, const uint8_t* /* packet */);
 
 int rawsock_open(const char *dev, int buffersize);
 int rawsock_has_ethernet_headers(void);

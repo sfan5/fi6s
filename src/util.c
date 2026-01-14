@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2016 sfan5 <sfan5@live.de>
 
-#define _DEFAULT_SOURCE // htobe16
 #define _GNU_SOURCE // pthread_setname_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h> // isdigit()
 #include <time.h>
 #include "os-endian.h"
 #include <assert.h>
@@ -30,6 +28,11 @@ bool validate_ports(const struct ports *p)
 	return p->r[0].end >= p->r[0].begin;
 }
 
+static inline bool my_isdigit(char c)
+{
+	return c >= '0' && c <= '9';
+}
+
 int parse_ports(const char *str, struct ports *dst)
 {
 	init_ports(dst);
@@ -45,7 +48,7 @@ int parse_ports(const char *str, struct ports *dst)
 		char cur[6] = {0};
 		int j = 0;
 
-		while(*p && isdigit(*p) && j < 5)
+		while(*p && my_isdigit(*p) && j < 5)
 			cur[j++] = *(p++);
 		j = strtol_simple(cur, 10);
 		if(j == -1)
@@ -64,7 +67,7 @@ int parse_ports(const char *str, struct ports *dst)
 		}
 
 		j = 0;
-		while(*p && isdigit(*p) && j < 5)
+		while(*p && my_isdigit(*p) && j < 5)
 			cur[j++] = *(p++);
 		cur[j] = '\0';
 		j = strtol_simple(cur, 10);

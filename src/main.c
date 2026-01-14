@@ -560,6 +560,7 @@ static void usage(void)
 		"      It refers to addresses 2001:db8::0, 2001:db8::1 ... 2001:db8::f",
 		"  Only one target specification can be specified on the command line,",
 		"  if you want to scan multiple targets pass @/path/to/list_of_targets.txt to fi6s.",
+		"  A target file may contain empty and comment lines (starting with #).",
 		"",
 		"The \"binary\" output format:",
 		"  When saving as binary output, banners will not be decoded during scanning and are saved verbatim.",

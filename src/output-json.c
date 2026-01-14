@@ -3,14 +3,29 @@
 // Copyright (C) 2016 sfan5 <sfan5@live.de>
 
 #include <string.h>
-#include <ctype.h>
+#include <stdbool.h>
 #include <inttypes.h>
 
 #include "output.h"
 #include "util.h"
 #include "banner.h"
 
-#define OUTPUT_BUFFER (512 + BANNER_MAX_LENGTH * (2+4))
+enum {
+	OUTPUT_BUFFER = 256 + BANNER_MAX_LENGTH * (2+4),
+};
+
+static inline bool json_printable(unsigned char c)
+{
+	switch(c) {
+		// avoid HTML stuff for portability
+		case '<': case '>': case '&':
+		// messes with the string
+		case '\\': case '"':
+			return false;
+		default:
+			return c >= 32 && c <= 126;
+	}
+}
 
 static void begin(FILE *f)
 {
@@ -33,14 +48,15 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 
 static void json_escape(struct obuf *out, const unsigned char* buf, uint32_t len)
 {
+	char tmp[10];
 	for(uint32_t i = 0; i < len; i++) {
-		int c = buf[i];
-		if(!isprint(c) || strchr("<>&\\\"\'", c) != NULL) {
-			char tmp[7];
-			snprintf(tmp, sizeof(tmp), "\\u00%02x", c);
-			obuf_writestr(out, tmp);
+		unsigned char c = buf[i];
+		// Note: this just encodes the byte as an unicode codepoint with the same value
+		if(!json_printable(c)) {
+			snprintf(tmp, sizeof(tmp), "\\u%04x", (int)c);
+			obuf_write(out, tmp, 6);
 		} else {
-			obuf_write(out, &buf[i], 1);
+			obuf_write(out, &c, 1);
 		}
 	}
 }

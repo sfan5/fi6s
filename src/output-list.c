@@ -3,14 +3,21 @@
 // Copyright (C) 2016 sfan5 <sfan5@live.de>
 
 #include <inttypes.h>
-#include <ctype.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "output.h"
 #include "util.h"
 #include "banner.h"
 
-#define OUTPUT_BUFFER (256 + BANNER_MAX_LENGTH * (2+2))
+enum {
+	OUTPUT_BUFFER = 256 + BANNER_MAX_LENGTH * (2+2),
+};
+
+static inline bool my_isprint(unsigned char c)
+{
+	return c >= 32 && c <= 126;
+}
 
 static void begin(FILE *f)
 {
@@ -33,14 +40,14 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 
 static void escaped(struct obuf *out, const unsigned char* buf, uint32_t len)
 {
+	char tmp[10];
 	for(uint32_t i = 0; i < len; i++) {
-		int c = buf[i];
-		if(c > 127 || !isprint(c)) {
-			char tmp[5];
-			snprintf(tmp, sizeof(tmp), "\\x%02x", c);
-			obuf_writestr(out, tmp);
+		unsigned char c = buf[i];
+		if(!my_isprint(c)) {
+			snprintf(tmp, sizeof(tmp), "\\x%02x", (int)c);
+			obuf_write(out, tmp, 4);
 		} else {
-			obuf_write(out, &buf[i], 1);
+			obuf_write(out, &c, 1);
 		}
 	}
 }

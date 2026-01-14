@@ -129,7 +129,7 @@ int scan_main(const char *interface, int quiet)
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
 	if(source_port != -1 && ip_type != IP_TYPE_ICMPV6)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
-	if(ip_type == IP_TYPE_UDP)
+	if(1)
 		fflags |= RAWSOCK_FILTER_RELATED_ICMP; // to detect closed ports
 	if(rawsock_setfilter(fflags, ip_type, source_addr, source_port) < 0)
 		goto err;
@@ -542,7 +542,7 @@ static void recv_handler_udp(uint64_t ts, u_int len, const uint8_t *packet, cons
 static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
 	// (detection of closed UDP ports only so far)
-	if(unl(ip_type != IP_TYPE_UDP))
+	if(0)
 		goto perr;
 	const u_int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE;
 	if(unl(len < minlen))
@@ -552,8 +552,9 @@ static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, con
 	// via rawsock_setfilter(), so we know that this is not a stray ICMP error
 	// unrelated to the scan.
 
+	bool closed = true;
 	if(ICMP_HEADER(packet)->type != 1) // Destination unreachable
-		return;
+		closed = false;
 
 	// Interpreting an ICMP error can be complex but we apply this rule of thumb:
 	// If the error sender is the IP we scanned, then it's not a router sending
@@ -561,15 +562,24 @@ static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, con
 	const uint8_t *inner_dstaddr;
 	rawsock_ip_decode(INNER_IP_FRAME(packet), NULL, NULL, NULL, NULL, &inner_dstaddr);
 	if(memcmp(csrcaddr, inner_dstaddr, 16) != 0)
-		return;
+		closed = false;
 
-	if(outdef.raw || show_closed) {
+	if(closed) {
+	if((ip_type == IP_TYPE_TCP || ip_type == IP_TYPE_UDP) && (outdef.raw || show_closed)) {
 		int v;
 		// (read the *dest* port, since the packet is a copy of what we sent)
 		udp_decode(INNER_UDP_HEADER(packet), NULL, &v);
 		int v2;
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, v2, OUTPUT_STATUS_CLOSED);
+		int p = ip_type == IP_TYPE_TCP ? OUTPUT_PROTO_TCP : OUTPUT_PROTO_UDP;
+		outdef.output_status(outfile, ts, csrcaddr, p, v, v2, OUTPUT_STATUS_CLOSED);
+	}
+	} else {
+		char buf[128], tmp[IPV6_STRING_MAX];
+		ipv6_string(tmp, inner_dstaddr);
+		snprintf(buf, sizeof(buf), "%d %d for %s",
+			ICMP_HEADER(packet)->type, ICMP_HEADER(packet)->code, tmp);
+		outdef.output_banner(outfile, ts, csrcaddr, OUTPUT_PROTO_ICMP, 1, buf, strlen(buf));
 	}
 
 	return;

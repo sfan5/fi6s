@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stddef.h> // offsetof
 #include <assert.h>
 #include <unistd.h>
+#include "os-endian.h"
 #include <stdatomic.h>
 #include <pcap.h>
 
@@ -60,18 +62,23 @@ int rawsock_has_ethernet_headers(void)
 	return linktype == DLT_EN10MB;
 }
 
+static inline uint32_t read_be32(const void *ptr)
+{
+	uint32_t x;
+	memcpy(&x, ptr, 4);
+	return be32toh(x);
+}
+
 #define snprintf_append(buffer, fmt, ...) do { \
 		unsigned int buffer_l = strlen(buffer); \
 		if(buffer_l < sizeof(buffer)) \
 			snprintf(&(buffer)[buffer_l], sizeof(buffer) - buffer_l, fmt, __VA_ARGS__); \
 	} while(0)
+#define AND(buf) (buf[0] ? " and " : "")
 
 int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dstport)
 {
-	char fstr[128];
-	struct bpf_program fp;
-
-	// reference: <https://www.tcpdump.org/manpages/pcap-filter.7.html>
+	/* reference: <https://www.tcpdump.org/manpages/pcap-filter.7.html> */
 
 	const char *proto = NULL;
 	if(flags & RAWSOCK_FILTER_IPTYPE) {
@@ -85,33 +92,74 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 			assert(false);
 	}
 
-	// As of 1.10.6 libpcap does not always seem to optimize checking the L3
-	// protocol so that adding 'and dst port xxxx' to an expression that already
-	// implies udp will result in an extra comparison against the protocol byte.
-	// Using 'udp dst port xxxx' avoid this.
-	if(proto && (flags & RAWSOCK_FILTER_DSTPORT))
-		flags &= ~RAWSOCK_FILTER_IPTYPE;
+	/* Build filter that catches "regular" packets */
+	char freg[64] = {0};
+	{
+		// As of 1.10.6 libpcap does not always seem to optimize checking the L4
+		// protocol so that adding 'and dst port xxxx' to an expression that already
+		// implies udp will result in an extra comparison against the protocol byte.
+		// Using 'udp dst port xxxx' avoid this.
+		bool filter_iptype = (flags & RAWSOCK_FILTER_IPTYPE);
+		if(proto && (flags & RAWSOCK_FILTER_DSTPORT))
+			filter_iptype = false;
+
+		if(filter_iptype) {
+			snprintf_append(freg, "%s%s", AND(freg), proto);
+		}
+		if(flags & RAWSOCK_FILTER_DSTPORT) {
+			assert(dstport > 0);
+			if(proto)
+				snprintf_append(freg, "%s%s dst port %d", AND(freg), proto, dstport);
+			else
+				snprintf_append(freg, "%sdst port %d", AND(freg), dstport);
+		}
+	}
+
+	/* Build filter for related ICMP errors */
+	char ficmp[256] = {0};
+	if(flags & RAWSOCK_FILTER_RELATED_ICMP) {
+		strncpy(ficmp, "icmp6[icmp6type] < 128", sizeof(ficmp));
+		// L4 protocol in the wrapped IP packet must match
+		if(flags & RAWSOCK_FILTER_IPTYPE) {
+			snprintf_append(ficmp, "%sicmp6[14] = %d", AND(ficmp), (int)iptype);
+		}
+		// ... source address
+		if(flags & RAWSOCK_FILTER_DSTADDR) {
+			assert(dstaddr);
+			// match in units of 4 bytes
+			const int off = 8 + offsetof(struct frame_ip, src);
+			for(int i = 0; i < 16; i += 4) {
+				uint32_t part = read_be32(dstaddr + i);
+				snprintf_append(ficmp, "%sicmp6[%d:4] = %#x", AND(ficmp), off + i, part);
+			}
+		}
+		// ... source port
+		if(flags & RAWSOCK_FILTER_DSTPORT) {
+			assert(dstport > 0);
+			// note: the offset here is valid for both TCP and UDP
+			const int off = 8 + FRAME_IP_SIZE;
+			snprintf_append(ficmp, "%sicmp6[%d:2] = %d", AND(ficmp), off, dstport);
+		}
+	}
+
+	/* Put everything together */
+	char fstr[512];
 
 	strncpy(fstr, "ip6", sizeof(fstr));
-	if(flags & RAWSOCK_FILTER_IPTYPE) {
-		snprintf_append(fstr, " and %s", proto);
-	}
-	// Also libpacp doesn't reorder the conditions so check the port first,
-	// which is much more likely to produce an early-exit case.
-	if(flags & RAWSOCK_FILTER_DSTPORT) {
-		assert(dstport > 0);
-		if(proto)
-			snprintf_append(fstr, " and %s dst port %d", proto, dstport);
-		else
-			snprintf_append(fstr, " and dst port %d", dstport);
-	}
 	if(flags & RAWSOCK_FILTER_DSTADDR) {
 		char tmp[IPV6_STRING_MAX];
 		assert(dstaddr);
 		ipv6_string(tmp, dstaddr);
-		snprintf_append(fstr, " and dst %s", tmp);
+		snprintf_append(fstr, "%sdst %s", AND(fstr), tmp);
+	}
+	if(freg[0] && ficmp[0]) {
+		snprintf_append(fstr, "%s((%s) or (%s))", AND(fstr), freg, ficmp);
+	} else if(freg[0] || ficmp[0]) {
+		const char *tmp = freg[0] ? freg : ficmp;
+		snprintf_append(fstr, "%s(%s)", AND(fstr), tmp);
 	}
 
+	struct bpf_program fp;
 	if(pcap_compile(handle, &fp, fstr, 1, PCAP_NETMASK_UNKNOWN) == -1) {
 		pcap_perror(handle, "pcap_compile");
 		log_raw("Filter expression was \"%s\"", fstr);
@@ -133,6 +181,8 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 
 	return 0;
 }
+
+#undef AND
 
 int rawsock_sniff(uint64_t *ts, int *length, const uint8_t **pkt)
 {

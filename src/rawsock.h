@@ -12,9 +12,14 @@
 #define IP_TYPE_ICMPV6 0x3a
 
 enum {
+	// filter L4 protocol
 	RAWSOCK_FILTER_IPTYPE  = (1 << 0),
+	// filter by destination IP
 	RAWSOCK_FILTER_DSTADDR = (1 << 1),
+	// filter by destination port
 	RAWSOCK_FILTER_DSTPORT = (1 << 2),
+	// also include any related ICMP errors (filters apply to paylod likewise)
+	RAWSOCK_FILTER_RELATED_ICMP = (1 << 3),
 };
 
 #define FRAME_ETH_SIZE 14

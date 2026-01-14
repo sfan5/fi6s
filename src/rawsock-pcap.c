@@ -90,6 +90,9 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 			proto = "icmp6";
 		else
 			assert(false);
+
+		if(iptype == IP_TYPE_ICMPV6)
+			assert((flags & RAWSOCK_FILTER_DSTPORT) == 0);
 	}
 
 	/* Build filter that catches "regular" packets */
@@ -104,7 +107,10 @@ int rawsock_setfilter(int flags, uint8_t iptype, const uint8_t *dstaddr, int dst
 			filter_iptype = false;
 
 		if(filter_iptype) {
-			snprintf_append(freg, "%s%s", AND(freg), proto);
+			if(iptype == IP_TYPE_ICMPV6)
+				snprintf_append(freg, "%sicmp6[icmp6type] = 129", AND(freg));
+			else
+				snprintf_append(freg, "%s%s", AND(freg), proto);
 		}
 		if(flags & RAWSOCK_FILTER_DSTPORT) {
 			assert(dstport > 0);

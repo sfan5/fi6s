@@ -13,6 +13,7 @@
 
 enum {
 	// filter L4 protocol
+	// special case: IP_TYPE_ICMPV6 will allow only 'Echo Reply'
 	RAWSOCK_FILTER_IPTYPE  = (1 << 0),
 	// filter by destination IP
 	RAWSOCK_FILTER_DSTADDR = (1 << 1),

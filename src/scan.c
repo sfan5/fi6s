@@ -110,6 +110,8 @@ int scan_main(const char *interface, int quiet)
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
 	if(source_port != -1 && ip_type != IP_TYPE_ICMPV6)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
+	if(ip_type == IP_TYPE_UDP)
+		fflags |= RAWSOCK_FILTER_RELATED_ICMP; // to detect closed ports
 	if(rawsock_setfilter(fflags, ip_type, source_addr, source_port) < 0)
 		goto err;
 
@@ -438,16 +440,16 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 	if(v != ETH_TYPE_IPV6 || len < FRAME_ETH_SIZE + FRAME_IP_SIZE)
 		goto perr;
 	rawsock_ip_decode(IP_FRAME(packet), &v, NULL, NULL, &csrcaddr, NULL);
-	if(v != ip_type) // is this the ip type we expect?
-		goto perr;
 
-	// handle
-	if(ip_type == IP_TYPE_TCP)
+	// call handler
+	if(v == IP_TYPE_TCP)
 		recv_handler_tcp(ts, len, packet, csrcaddr);
-	else if(ip_type == IP_TYPE_UDP)
+	else if(v == IP_TYPE_UDP)
 		recv_handler_udp(ts, len, packet, csrcaddr);
-	else // IP_TYPE_ICMPV6
+	else if(v == IP_TYPE_ICMPV6)
 		recv_handler_icmp(ts, len, packet, csrcaddr);
+	else
+		goto perr;
 
 	return;
 	perr: ;
@@ -458,6 +460,8 @@ static void recv_handler(uint64_t ts, int len, const uint8_t *packet)
 
 static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
+	if(ip_type != IP_TYPE_TCP)
+		goto perr;
 	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + TCP_HEADER_SIZE)
 		goto perr;
 
@@ -483,6 +487,8 @@ static void recv_handler_tcp(uint64_t ts, int len, const uint8_t *packet, const 
 
 static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
+	if(ip_type != IP_TYPE_UDP)
+		goto perr;
 	if(len < FRAME_ETH_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE)
 		goto perr;
 
@@ -514,14 +520,68 @@ static void recv_handler_udp(uint64_t ts, int len, const uint8_t *packet, const 
 #endif
 }
 
+enum {
+	FULL_ICMP_SIZE = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE,
+};
+
+#define INNER_IP_FRAME(buf) ( (const struct frame_ip*) &(buf)[FULL_ICMP_SIZE] )
+#define INNER_UDP_HEADER(buf) ( (const struct udp_header*) &(buf)[FULL_ICMP_SIZE + FRAME_IP_SIZE] )
+
+static void handle_icmp_error(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
+{
+	// (detection of closed UDP ports only so far)
+	if(ip_type != IP_TYPE_UDP)
+		goto perr;
+	const int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE;
+	if(len < minlen)
+		goto perr;
+
+	// Note: the destination ip/port and protocol type are already checked
+	// via rawsock_setfilter(), so we know that this is not a stray ICMP error
+	// unrelated to the scan.
+
+	if(ICMP_HEADER(packet)->type != 1) // Destination unreachable
+		return;
+
+	// Interpreting an ICMP error can be complex but we apply this rule of thumb:
+	// If the error sender is the IP we scanned, then it's not a router sending
+	// a generic error but the port is actually closed.
+	const uint8_t *inner_dstaddr;
+	rawsock_ip_decode(INNER_IP_FRAME(packet), NULL, NULL, NULL, NULL, &inner_dstaddr);
+	if(memcmp(csrcaddr, inner_dstaddr, 16) != 0)
+		return;
+
+	if(outdef.raw || show_closed) {
+		int v;
+		// (read the *dest* port, since the packet is a copy of what we sent)
+		udp_decode(INNER_UDP_HEADER(packet), NULL, &v);
+		int v2;
+		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
+		outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, v2, OUTPUT_STATUS_CLOSED);
+	}
+
+	return;
+	perr: ;
+#ifndef NDEBUG
+	log_raw("%s: errored packet of length %d", __func__, len);
+#endif
+}
+
+#undef INNER_IP_FRAME
+#undef INNER_UDP_HEADER
+
 static void recv_handler_icmp(uint64_t ts, int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
 	const int minlen = FRAME_ETH_SIZE + FRAME_IP_SIZE + ICMP_HEADER_SIZE;
 	if(len < minlen)
 		goto perr;
-	else if(len != minlen)
-		return;
 
+	if(ICMP_HEADER(packet)->type < 128)
+		return handle_icmp_error(ts, len, packet, csrcaddr);
+
+	// handling for icmp echo scans follows:
+	if(len != minlen)
+		return;
 	if(ICMP_HEADER(packet)->type != 129) // Echo Reply
 		return;
 	if(ICMP_HEADER(packet)->body32 != scan_randomness)

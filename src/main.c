@@ -536,7 +536,7 @@ static void usage(void)
 		{"Output options:", NULL},
 		{"-o <file>", "Write results to <file>"},
 		{"--output-format <fmt>", "Set output format to one of list,json,binary (default: list)"},
-		{"--show-closed", "Show closed ports (TCP)"},
+		{"--show-closed", "Show closed ports (TCP or UDP)"},
 		{NULL},
 	};
 	for(int i = 0; lines[i].l != NULL; i++) {

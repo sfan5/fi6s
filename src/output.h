@@ -5,6 +5,7 @@
 #pragma once
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 enum {
 	OUTPUT_STATUS_OPEN = 0,
@@ -23,9 +24,17 @@ struct outputdef {
 	void (*output_status)(FILE *, uint64_t /*ts*/, const uint8_t * /*addr*/, int /*proto*/, uint16_t /*port*/, uint8_t /*ttl*/, int /*status*/);
 	void (*output_banner)(FILE *, uint64_t /*ts*/, const uint8_t * /*addr*/, int /*proto*/, uint16_t /*port*/, const char * /*banner*/, uint32_t /*bannerlen*/);
 	void (*end)(FILE *);
-	unsigned raw : 1;
+	bool raw;
 };
 
 extern const struct outputdef output_list;
 extern const struct outputdef output_json;
 extern const struct outputdef output_binary;
+
+/* INTERNAL */
+
+#define OUTPUT_SCRATCH_BUFFER_SIZE 32000
+struct obuf;
+
+// Returns a thread-local scratch buffer
+struct obuf output_get_scratch_buf(void);

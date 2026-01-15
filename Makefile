@@ -8,6 +8,7 @@ LIBS = -lpcap
 ifeq ($(BUILD_TYPE),debug)
 CFLAGS += -O1 -ggdb
 #CFLAGS += -fsanitize=type
+#CFLAGS += -Wstack-usage=6144
 else
 ifeq ($(BUILD_TYPE),release)
 CFLAGS += -O3 -g -DNDEBUG
@@ -36,7 +37,7 @@ SRC = \
 	scan.c scan-responder.c scan-reader.c \
 	target-parse.c target-gen.c \
 	rawsock-pcap.c rawsock-frame.c rawsock-routes.c \
-	output-list.c output-json.c output-binary.c \
+	output.c output-list.c output-json.c output-binary.c \
 	tcp.c tcp-state.c udp.c icmp.c \
 	banner.c \
 	binary-write.c binary-read.c
@@ -51,7 +52,7 @@ SRC += bench-$(BENCH).c
 endif
 endif
 
-OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC)))) 
+OBJ = $(addprefix obj/, $(addsuffix .o, $(basename $(SRC))))
 
 all: fi6s
 

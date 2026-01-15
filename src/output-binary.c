@@ -4,18 +4,16 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "output.h"
 #include "binary.h"
 #include "util.h"
 
-#define OUTPUT_BUFFER 512
-#define OUTPUT_BUFFER_BIG 65535
-
 static void begin(FILE *f)
 {
-	DECLARE_OBUF_STACK(buf, OUTPUT_BUFFER);
+	DECLARE_OBUF_STACK(buf, 256);
 
 	binary_write_header(&buf);
 
@@ -25,7 +23,7 @@ static void begin(FILE *f)
 
 static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, uint8_t ttl, int status)
 {
-	DECLARE_OBUF_STACK(buf, OUTPUT_BUFFER);
+	DECLARE_OBUF_STACK(buf, 256);
 
 	struct rec_header h;
 	h.timestamp = ts;
@@ -41,7 +39,7 @@ static void status(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_
 
 static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
-	DECLARE_OBUF_STACK(buf, OUTPUT_BUFFER_BIG);
+	struct obuf buf = output_get_scratch_buf();
 
 	struct rec_header h;
 	h.timestamp = ts;

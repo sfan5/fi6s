@@ -3,15 +3,15 @@
 // Copyright (C) 2016 sfan5 <sfan5@live.de>
 
 #include <inttypes.h>
-#include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 
 #include "output.h"
 #include "util.h"
 #include "banner.h"
 
 enum {
-	OUTPUT_BUFFER = 256 + BANNER_MAX_LENGTH * (2+2),
+	MAX_NEEDED_BYTES = 256 + BANNER_MAX_LENGTH * (2+2),
 };
 
 static inline bool my_isprint(unsigned char c)
@@ -55,7 +55,8 @@ static void escaped(struct obuf *out, const unsigned char* buf, uint32_t len)
 static void banner(FILE *f, uint64_t ts, const uint8_t *addr, int proto, uint16_t port, const char *banner, uint32_t bannerlen)
 {
 	// banner tcp <port> <ip> <ts> <proto> <banner>
-	DECLARE_OBUF_STACK(out, OUTPUT_BUFFER);
+	struct obuf out = output_get_scratch_buf();
+	static_assert(OUTPUT_SCRATCH_BUFFER_SIZE >= MAX_NEEDED_BYTES, "");
 
 	char addrstr[IPV6_STRING_MAX], buffer[256];
 	const char *svc;

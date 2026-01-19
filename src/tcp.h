@@ -45,7 +45,7 @@ void tcp_decode(const struct tcp_header *pkt, int *srcport, int *dstport);
 void tcp_decode2(const struct tcp_header *pkt, uint32_t *seqnum, uint32_t *acknum);
 
 static inline uint32_t tcp_first_seqnum(uint32_t rnd) {
-	rnd &= ~(1 << 15); // make room to avoid overflow
+	rnd &= ~(1 << 12); // make room to avoid overflow
 	return rnd;
 }
 

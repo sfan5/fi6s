@@ -34,6 +34,6 @@ int scan_reader_main(FILE *infile);
 #define UDP_DATA(buf) TCP_DATA(buf, UDP_HEADER_SIZE)
 
 int scan_responder_init(FILE *outfile, const struct outputdef *outdef, uint16_t source_port, uint32_t scan_randomness);
-void scan_responder_process(uint64_t ts, int len, const uint8_t *rpacket);
+void scan_responder_process(uint64_t ts, unsigned int len, const uint8_t *rpacket);
 void scan_responder_stats(unsigned int *pkts_sent);
 void scan_responder_finish();

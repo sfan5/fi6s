@@ -489,14 +489,21 @@ static void recv_handler_tcp(uint64_t ts, u_int len, const uint8_t *packet, cons
 	if(unl(len < FULL_TCP_SIZE))
 		goto perr;
 
+	const struct tcp_header *th = TCP_HEADER(packet);
+
 	// Output stuff
-	if(TCP_HEADER(packet)->f_ack && (TCP_HEADER(packet)->f_syn || TCP_HEADER(packet)->f_rst)) {
-		int v, v2;
-		tcp_decode(TCP_HEADER(packet), &v, NULL);
-		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		int st = TCP_HEADER(packet)->f_syn ? OUTPUT_STATUS_OPEN : OUTPUT_STATUS_CLOSED;
-		if(outdef.raw || show_closed || TCP_HEADER(packet)->f_syn)
-			outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, st);
+	if(th->f_ack && (th->f_syn || th->f_rst)) {
+		uint32_t acknum;
+		tcp_decode2(th, NULL, &acknum);
+		// must match the seqnum we sent in our SYN
+		if(acknum == tcp_first_seqnum(scan_randomness) + 1) {
+			int v, v2;
+			tcp_decode(th, &v, NULL);
+			rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
+			int st = th->f_syn ? OUTPUT_STATUS_OPEN : OUTPUT_STATUS_CLOSED;
+			if(outdef.raw || show_closed || st == OUTPUT_STATUS_OPEN)
+				outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_TCP, v, v2, st);
+		}
 	}
 	// Pass packet to responder
 	if(banners)
@@ -574,13 +581,12 @@ static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, con
 		return;
 
 	if(outdef.raw || show_closed) {
-		int v;
+		int v, v2;
 		// read the *dest* port, since the packet is a copy of what we sent
 		if(tcp)
 			tcp_decode(INNER_TCP_HEADER(packet), NULL, &v);
 		else
 			udp_decode(INNER_UDP_HEADER(packet), NULL, &v);
-		int v2;
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
 		const int proto = tcp ? OUTPUT_PROTO_TCP : OUTPUT_PROTO_UDP;
 		outdef.output_status(outfile, ts, csrcaddr, proto, v, v2, OUTPUT_STATUS_CLOSED);

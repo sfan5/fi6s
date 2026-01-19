@@ -110,6 +110,10 @@ void scan_set_output(FILE *_outfile, const struct outputdef *_outdef)
 
 int scan_main(const char *interface, int quiet)
 {
+	assert(outdef.begin != NULL);
+	assert(ip_type != 0);
+	assert(ip_type == IP_TYPE_ICMPV6 || validate_ports(&ports));
+
 	if(rawsock_open(interface, 65535) < 0)
 		return -1;
 	scan_randomness = rand64();
@@ -129,8 +133,12 @@ int scan_main(const char *interface, int quiet)
 	int fflags = RAWSOCK_FILTER_IPTYPE | RAWSOCK_FILTER_DSTADDR;
 	if(source_port != -1 && ip_type != IP_TYPE_ICMPV6)
 		fflags |= RAWSOCK_FILTER_DSTPORT;
-	if(ip_type == IP_TYPE_UDP)
-		fflags |= RAWSOCK_FILTER_RELATED_ICMP; // to detect closed ports
+	if(outdef.raw || show_closed) {
+		if(ip_type == IP_TYPE_TCP || ip_type == IP_TYPE_UDP) {
+			// this is *required* to detect closed UDP ports, and sometimes useful for TCP too
+			fflags |= RAWSOCK_FILTER_RELATED_ICMP;
+		}
+	}
 	if(rawsock_setfilter(fflags, ip_type, source_addr, source_port) < 0)
 		goto err;
 
@@ -537,14 +545,16 @@ static void recv_handler_udp(uint64_t ts, u_int len, const uint8_t *packet, cons
 }
 
 #define INNER_IP_FRAME(buf) ( (const struct frame_ip*) &(buf)[FULL_ICMP_SIZE] )
+#define INNER_TCP_HEADER(buf) ( (const struct tcp_header*) &(buf)[FULL_ICMP_SIZE + FRAME_IP_SIZE] )
 #define INNER_UDP_HEADER(buf) ( (const struct udp_header*) &(buf)[FULL_ICMP_SIZE + FRAME_IP_SIZE] )
 
 static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)
 {
-	// (detection of closed UDP ports only so far)
-	if(unl(ip_type != IP_TYPE_UDP))
+	const bool tcp = ip_type == IP_TYPE_TCP;
+	if(unl(ip_type != IP_TYPE_UDP && !tcp))
 		goto perr;
-	const u_int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + UDP_HEADER_SIZE;
+
+	const u_int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + tcp ? TCP_HEADER_SIZE : UDP_HEADER_SIZE;
 	if(unl(len < minlen))
 		goto perr;
 
@@ -565,11 +575,15 @@ static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, con
 
 	if(outdef.raw || show_closed) {
 		int v;
-		// (read the *dest* port, since the packet is a copy of what we sent)
-		udp_decode(INNER_UDP_HEADER(packet), NULL, &v);
+		// read the *dest* port, since the packet is a copy of what we sent
+		if(tcp)
+			tcp_decode(INNER_TCP_HEADER(packet), NULL, &v);
+		else
+			udp_decode(INNER_UDP_HEADER(packet), NULL, &v);
 		int v2;
 		rawsock_ip_decode(IP_FRAME(packet), NULL, NULL, &v2, NULL, NULL);
-		outdef.output_status(outfile, ts, csrcaddr, OUTPUT_PROTO_UDP, v, v2, OUTPUT_STATUS_CLOSED);
+		const int proto = tcp ? OUTPUT_PROTO_TCP : OUTPUT_PROTO_UDP;
+		outdef.output_status(outfile, ts, csrcaddr, proto, v, v2, OUTPUT_STATUS_CLOSED);
 	}
 
 	return;
@@ -580,6 +594,7 @@ static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, con
 }
 
 #undef INNER_IP_FRAME
+#undef INNER_TCP_HEADER
 #undef INNER_UDP_HEADER
 
 static void recv_handler_icmp(uint64_t ts, u_int len, const uint8_t *packet, const uint8_t *csrcaddr)

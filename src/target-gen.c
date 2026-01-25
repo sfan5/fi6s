@@ -459,10 +459,13 @@ static void next_addr(struct targetstate *t, uint8_t *dst)
 	// above remains correct.
 
 	// Note: I tested __uint128_t for this too. GCCs code is extremely slow;
-	// clang is fine, but it's still slower than this 64-bit implementation.
-	// Note 2: reading the bytes as LE - or in any other order - would not
-	// make the results incorrect, just "randomize" them a little.
-	// However we want to keep the natural order.
+	//   clang is fine, but it's still slower than this 64-bit implementation.
+	// Note 2: Using __builtin_addcll this could be rewritten in a nice, entirely
+	//   branchless manner (just 24 x86-64 instructions). That however turns out
+	//   to be slower than the current branchy code. wat.
+	// Note 3: reading the bytes as LE - or in any other order - would not
+	//   make the results incorrect, just "randomize" them a little.
+	//   However we want to keep the natural order.
 
 	uint64_t m0 = read_be64(t->spec.mask), m1 = read_be64(t->spec.mask + 8);
 	uint64_t c0 = read_be64(t->cur),       c1 = read_be64(t->cur + 8);

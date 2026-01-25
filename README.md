@@ -144,7 +144,7 @@ Example: scan `3fff:1234:1234:44xx::` -> response from `3fff:1234:1234:44a3:e2a:
 ### Target randomization
 
 The way fi6s randomizes the scanned IPs (`--randomize-hosts 1`, which is the default)
-is not perfect.
+is far from perfect.
 
 It will:
 * shuffle IPs in batches of 8192

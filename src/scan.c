@@ -561,7 +561,8 @@ static void handle_icmp_error(uint64_t ts, u_int len, const uint8_t *packet, con
 	if(unl(ip_type != IP_TYPE_UDP && !tcp))
 		goto perr;
 
-	const u_int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE + tcp ? TCP_HEADER_SIZE : UDP_HEADER_SIZE;
+	const u_int minlen = FULL_ICMP_SIZE + FRAME_IP_SIZE +
+		(tcp ? TCP_HEADER_SIZE : UDP_HEADER_SIZE);
 	if(unl(len < minlen))
 		goto perr;
 

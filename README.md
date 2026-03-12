@@ -20,7 +20,7 @@ Building fi6s is fairly easy on any recent Linux system, e.g. on Ubuntu:
 	$ cd fi6s
 	$ make BUILD_TYPE=release
 
-The scanner executable will be ready at `./fi6s`.
+The executable will be ready at `./fi6s`.
 
 Note that fi6s is developed and tested solely on Linux. Other UNIX-like platforms
 *should* work, Windows will not.
@@ -32,13 +32,13 @@ fi6s will auto-detect the dirty network details (source, router MACs and IPs) fo
 	# ./fi6s -p 80,8000-8100 --max-rate 170 2001:db8::/120
 
 This example will:
-* scan the 2001:db8::/120 subnet (256 addresses in total)
-* scan TCP ports 80 and 8000 to 8100 (102 ports in total)
+* scan the 2001:db8::/120 subnet, so 256 IPs in total
+* scan TCP ports 80 and 8000 to 8100, so 102 ports in total
 * send at most 170 packets per second
-* output scan results to standard output in the "`list`" format
+* output scan results to standard output in the "`list`" format (implicit default)
 
-There are more different ways of specifying an address range to scan,
-if you aren't sure what's about to happen use `--print-summary` to get a quick
+There are more different ways of specifying an address range to scan.
+If you aren't sure what's about to happen use `--print-summary` to get a quick
 overview about the scan or `--print-hosts` to print all potential target IPs.
 
 For more advanced features and additional explanations please consult the output of `fi6s --help`.
@@ -64,7 +64,7 @@ Use `fi6s --list-protocols` to view a list.
 
 ### The source port and the IP stack
 
-Since fi6s brings its own minimal TCP/IP stack the operating system has to be prevented
+Since fi6s brings its own minimal TCP/IP stack, the operating system has to be prevented
 from trying to talk TCP on the same port fi6s is using, or it would break the scanning process.
 
 By default fi6s will ask the OS to reserve an ephemeral port and use it for the
@@ -81,8 +81,8 @@ traffic on this port, e.g.:
 	# ./fi6s -p 22 --banners --source-port 12345 2001:db8::xx
 
 Since UDP is connection-less there is no need to do this, but it's still
-a good idea to prevent your OS from sending unnecessary ICMPv6 unreachable
-responses. fi6s will also do this by default.
+a good idea to prevent unnecessary ICMPv6 responses from being sent.
+fi6s will also do this by default.
 
 ### Selecting the source IP
 
@@ -115,9 +115,9 @@ This means fi6s may not perform as expected or outright not work if:
     - it will be ignored. fi6s expects a single gateway
 * you are scanning targets in the local network
     - fi6s does not do neighbor discovery
-* you have a connection-tracking firewall
+* you have a connection-tracking firewall (no matter if iptables or an external device)
     - it will likely be overwhelmed by the amount of "connections"
-* your IP or router's MAC changes mid-scan ¯\\\_(ツ)_/¯
+* the IP or MAC of your host or gateway changes mid-scan ¯\\\_(ツ)_/¯
 * your network has consistent packet loss
 * any IPv6 extension headers are in use by the target (this includes fragmentation)
 
@@ -131,11 +131,11 @@ While fi6s uses port and sequence numbers to ensure that the results you get are
 related to the specific running scan, it does **not** have a check to
 compare the IP a probe was sent to with the IP that is actually responding.
 
-This means if you e.g. run ping or a traceroute during an ICMP scan, the
-results will *not* be contaminated.
+This means running e.g. any kind of tracerouting during a scan will not
+interfere with the scan results.
 
-However it *is possible* for `2001:db8:f00::1` to show up in the scan results
-despite specifying `2001:db8:0::/116` as target subnet.
+However it *is possible* for an IP to show up in the scan results that was not
+part of the input list, if a scanned target replies on a different IP.
 This property can be useful in practice, since some routers will accept SNMP or
 DNS queries on the zero network address, but answer with their primary IPv6.
 

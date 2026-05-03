@@ -22,6 +22,7 @@
 
 static int read_targets_from_file(const char *filename, int stream_targets);
 static void usage(void);
+static int selftest(void);
 static inline bool is_all_ff(const uint8_t *buf, int len);
 static inline char *find_dot(char *str);
 
@@ -241,6 +242,11 @@ int main(int argc, char *argv[])
 	}
 	if(argc - optind > max_args) {
 		log_raw("Too many arguments.");
+		return 1;
+	}
+
+	if(selftest() < 0) {
+		log_error("The built-in self test failed and fi6s cannot operate.");
 		return 1;
 	}
 
@@ -588,6 +594,18 @@ static void usage(void)
 	printf("\n");
 	printf("(debug build)\n");
 #endif
+}
+
+static int selftest(void)
+{
+	char _Alignas(uint16_t) buf[] = "the quickbrownfxjmpsvlazydg";
+	uint32_t tmp = chksum(CHKSUM_INITIAL, buf, 6);
+	uint16_t c = chksum_final(tmp, buf+6, 27-6);
+	if (c != 0xb8fc) {
+		log_raw("expected chksum 0xb8fc got %#x", c);
+		return -1;
+	}
+	return 0;
 }
 
 static inline bool is_all_ff(const uint8_t *buf, int len)

@@ -19,7 +19,7 @@ enum {
 	RAWSOCK_FILTER_DSTADDR = (1 << 1),
 	// filter by destination port
 	RAWSOCK_FILTER_DSTPORT = (1 << 2),
-	// also include any related ICMP errors (filters apply to paylod likewise)
+	// also include any related ICMP errors (filters apply to payload likewise)
 	RAWSOCK_FILTER_RELATED_ICMP = (1 << 3),
 };
 

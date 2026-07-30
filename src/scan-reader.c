@@ -43,7 +43,7 @@ int scan_reader_main(FILE *infile)
 	if(!databuf)
 		return -1;
 
-	bool any = false, b_only = true, c_only = true;
+	bool any = false, any_shown = false, has_b = false, has_c = false;
 
 	outdef.begin(outfile);
 	while(1) {
@@ -73,9 +73,10 @@ int scan_reader_main(FILE *infile)
 				return -1;
 			}
 
+			has_b = true;
 			if(!banners)
 				continue;
-			c_only = false;
+			any_shown = true;
 			if(!outdef.raw) {
 				uint8_t ip_type = proto == OUTPUT_PROTO_TCP ? IP_TYPE_TCP : IP_TYPE_UDP;
 				banner_postprocess(ip_type, h.port, databuf, &data_length);
@@ -83,20 +84,25 @@ int scan_reader_main(FILE *infile)
 			outdef.output_banner(outfile, h.timestamp, h.addr, proto, h.port, databuf, data_length);
 		} else {
 			bool show = outdef.raw || show_closed || status != OUTPUT_STATUS_CLOSED;
-			b_only = false;
-			c_only &= !show;
+			any_shown |= show;
+			has_c |= status == OUTPUT_STATUS_CLOSED;
 			if(show)
 				outdef.output_status(outfile, h.timestamp, h.addr, proto, h.port, h.ttl, status);
 		}
 	}
 	outdef.end(outfile);
 
-	if(!any)
-		log_raw("Note: the scan file was empty.");
-	else if(!banners && b_only) // relevant for UDP
-		log_raw("Note: the scan file wasn't empty, but all records were filtered. Try with --banners.");
-	else if(c_only) // relevant for TCP
-		log_raw("Note: the scan file wasn't empty, but all records were filtered. Try with --show-closed.");
+	if(!any_shown) {
+		const char *hint = NULL;
+		if(!any)
+			hint = "the scan file was empty.";
+		else if(has_b)
+			hint = "the scan file wasn't empty, but all records were filtered. Try with --banners.";
+		else if(has_c)
+			hint = "the scan file wasn't empty, but all records were filtered. Try with --show-closed.";
+		if(hint)
+			log_raw("Note: %s", hint);
+	}
 
 	free(databuf);
 	return 0;
